@@ -21,8 +21,8 @@ func New(URI string, path string) *URIParser {
 	return &parser
 }
 
-func (r *URIParser) GetPathValue(pathName string) (string, bool) {
-	val := r.fields[pathName]
+func (p *URIParser) GetPathValue(pathName string) (string, bool) {
+	val := p.fields[pathName]
 
 	return val, val != ""
 }
