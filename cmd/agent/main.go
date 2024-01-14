@@ -5,43 +5,54 @@ import (
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
+	"github.com/daremove/go-metrics-service/internal/utils"
 	"reflect"
 	"time"
 )
 
 func main() {
+	parseFlags()
+
+	var data stats.ReadResult
 	statsService := stats.New()
-	iteration := 0
 
-	for {
-		time.Sleep(2 * time.Second)
-		iteration += 1
+	fmt.Printf("Starting read stats data every %v seconds and send it every %v seconds to %s", pollInterval, reportInterval, endpoint)
 
-		data := statsService.Read()
+	utils.Parallelize(
+		func() {
+			for {
+				time.Sleep(time.Duration(pollInterval) * time.Second)
 
-		if iteration%5 == 0 {
-			v := reflect.ValueOf(data)
+				data = statsService.Read()
+			}
+		},
+		func() {
+			for {
+				time.Sleep(time.Duration(reportInterval) * time.Second)
 
-			for i := 0; i < v.NumField(); i++ {
-				metricType := "gauge"
-				metricName := v.Type().Field(i).Name
-				metricValue := v.Field(i)
+				v := reflect.ValueOf(data)
 
-				if metrics.IsCounterMetricType(metricName) {
-					metricType = "counter"
-				}
+				for i := 0; i < v.NumField(); i++ {
+					metricType := "gauge"
+					metricName := v.Type().Field(i).Name
+					metricValue := v.Field(i)
 
-				err := serverrouter.SendMetricData(serverrouter.SendMetricDataParameters{
-					URL:         "http://localhost:8080",
-					MetricType:  metricType,
-					MetricName:  metricName,
-					MetricValue: fmt.Sprintf("%v", metricValue),
-				})
+					if metrics.IsCounterMetricType(metricName) {
+						metricType = "counter"
+					}
 
-				if err != nil {
-					panic(err)
+					err := serverrouter.SendMetricData(serverrouter.SendMetricDataParameters{
+						URL:         fmt.Sprintf("http://%s", endpoint),
+						MetricType:  metricType,
+						MetricName:  metricName,
+						MetricValue: fmt.Sprintf("%v", metricValue),
+					})
+
+					if err != nil {
+						panic(err)
+					}
 				}
 			}
-		}
-	}
+		},
+	)
 }

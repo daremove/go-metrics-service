@@ -13,11 +13,11 @@ import (
 
 type serverRouter struct {
 	metricsService metrics.Service
-	port           int
+	endpoint       string
 }
 
-func New(metricsService metrics.Service, port int) *serverRouter {
-	return &serverRouter{metricsService, port}
+func New(metricsService metrics.Service, endpoint string) *serverRouter {
+	return &serverRouter{metricsService, endpoint}
 }
 
 func ServerRouter(metricsService metrics.Service) chi.Router {
@@ -55,7 +55,7 @@ func ServerRouter(metricsService metrics.Service) chi.Router {
 }
 
 func (router *serverRouter) Run() {
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", router.port), ServerRouter(router.metricsService)))
+	log.Fatal(http.ListenAndServe(router.endpoint, ServerRouter(router.metricsService)))
 }
 
 func updateMetricHandler(metricsService metrics.Service) http.HandlerFunc {
