@@ -16,7 +16,7 @@ func main() {
 	var data stats.ReadResult
 	statsService := stats.New()
 
-	fmt.Printf("Starting read stats data every %v seconds and send it every %v seconds to %s", pollInterval, reportInterval, endpoint)
+	fmt.Printf("Starting read stats data every %v and send it every %v to %s", time.Duration(pollInterval)*time.Second, time.Duration(reportInterval)*time.Second, endpoint)
 
 	utils.Parallelize(
 		func() {
