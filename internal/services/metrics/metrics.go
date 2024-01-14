@@ -12,8 +12,22 @@ type SaveParameters struct {
 	MetricValue string
 }
 
+type GetParameters struct {
+	MetricType string
+	MetricName string
+}
+
+type MetricItem struct {
+	Name  string
+	Value string
+}
+
 type Service interface {
 	Save(parameters SaveParameters) error
+
+	Get(parameters GetParameters) (string, bool)
+
+	GetAll() []MetricItem
 }
 
 type metrics struct {
@@ -53,6 +67,35 @@ func (m *metrics) Save(parameters SaveParameters) error {
 	}
 
 	return nil
+}
+
+func (m *metrics) Get(parameters GetParameters) (string, bool) {
+	switch parameters.MetricType {
+	case "gauge":
+		value, ok := m.store.GetGaugeMetric(parameters.MetricName)
+
+		return fmt.Sprintf("%g", value), ok
+	case "counter":
+		value, ok := m.store.GetCounterMetric(parameters.MetricName)
+
+		return fmt.Sprintf("%v", value), ok
+	default:
+		return "", false
+	}
+}
+
+func (m *metrics) GetAll() []MetricItem {
+	var result []MetricItem
+
+	for _, item := range m.store.GetGaugeMetrics() {
+		result = append(result, MetricItem{item.Name, fmt.Sprintf("%g", item.Value)})
+	}
+
+	for _, item := range m.store.GetCounterMetrics() {
+		result = append(result, MetricItem{item.Name, fmt.Sprintf("%v", item.Value)})
+	}
+
+	return result
 }
 
 func IsCounterMetricType(metricName string) bool {

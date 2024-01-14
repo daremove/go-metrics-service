@@ -3,8 +3,12 @@ package serverrouter
 import (
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
-	"github.com/daremove/go-metrics-service/internal/utils/uriparser"
+	"github.com/go-chi/chi/v5"
+	"io"
+	"log"
 	"net/http"
+	"sort"
+	"strings"
 )
 
 type serverRouter struct {
@@ -16,57 +20,90 @@ func New(metricsService metrics.Service, port int) *serverRouter {
 	return &serverRouter{metricsService, port}
 }
 
-func (router *serverRouter) Run() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/update/", updateMetricHandler(router.metricsService))
+func ServerRouter(metricsService metrics.Service) chi.Router {
+	r := chi.NewRouter()
 
-	err := http.ListenAndServe(fmt.Sprintf(":%v", router.port), mux)
+	r.Route("/", func(r chi.Router) {
+		r.Get("/", getAllMetricsHandler(metricsService))
 
-	if err != nil {
-		panic(err)
-	}
+		r.Route("/update", func(r chi.Router) {
+			r.Route("/{metricType}", func(r chi.Router) {
+				r.Route("/{metricName}", func(r chi.Router) {
+					r.Post("/{metricValue}", updateMetricHandler(metricsService))
+
+					r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+						http.Error(w, "metricValue wasn't provided", http.StatusBadRequest)
+					})
+				})
+
+				r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+					http.Error(w, "metricName wasn't provided", http.StatusNotFound)
+				})
+			})
+
+			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "metricType wasn't provided", http.StatusBadRequest)
+			})
+		})
+
+		r.Route("/value/{metricType}/{metricName}", func(r chi.Router) {
+			r.Get("/", getMetricValueHandler(metricsService))
+		})
+	})
+
+	return r
 }
 
-// http://<АДРЕС_СЕРВЕРА>/update/<ТИП_МЕТРИКИ>/<ИМЯ_МЕТРИКИ>/<ЗНАЧЕНИЕ_МЕТРИКИ>
+func (router *serverRouter) Run() {
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", router.port), ServerRouter(router.metricsService)))
+}
+
 func updateMetricHandler(metricsService metrics.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "", http.StatusNotFound)
-			return
-		}
-
-		parser := uriparser.New(r.RequestURI, "/method/metricType/metricName/metricValue")
-
-		metricType, ok := parser.GetPathValue("metricType")
-
-		if !ok {
-			http.Error(w, "", http.StatusBadRequest)
-			return
-		}
-
-		metricName, ok := parser.GetPathValue("metricName")
-
-		if !ok {
-			http.Error(w, "", http.StatusNotFound)
-			return
-		}
-
-		metricValue, ok := parser.GetPathValue("metricValue")
-
-		if !ok {
-			http.Error(w, "", http.StatusBadRequest)
-			return
-		}
-
 		if err := metricsService.Save(metrics.SaveParameters{
-			MetricType:  metricType,
-			MetricName:  metricName,
-			MetricValue: metricValue,
+			MetricType:  chi.URLParam(r, "metricType"),
+			MetricName:  chi.URLParam(r, "metricName"),
+			MetricValue: chi.URLParam(r, "metricValue"),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
 		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func getMetricValueHandler(metricsService metrics.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, ok := metricsService.Get(metrics.GetParameters{
+			MetricType: chi.URLParam(r, "metricType"),
+			MetricName: chi.URLParam(r, "metricName"),
+		})
+
+		if !ok {
+			http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+		}
+
+		if _, err := io.WriteString(w, value); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func getAllMetricsHandler(metricsService metrics.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var result []string
+
+		for _, el := range metricsService.GetAll() {
+			result = append(result, fmt.Sprintf("%s - %s", el.Name, el.Value))
+		}
+
+		sort.Strings(result)
+
+		_, err := io.WriteString(w, fmt.Sprintf("<html><head><title>All metrics</title></head><body>%s</body></html>", strings.Join(result, "<br />")))
+
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -78,13 +115,7 @@ type SendMetricDataParameters struct {
 }
 
 func SendMetricData(parameters SendMetricDataParameters) error {
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/update/%s/%s/%s", parameters.URL, parameters.MetricType, parameters.MetricName, parameters.MetricValue), nil)
-
-	if err != nil {
-		return err
-	}
-
-	res, err := http.DefaultClient.Do(req)
+	res, err := http.Post(fmt.Sprintf("%s/update/%s/%s/%s", parameters.URL, parameters.MetricType, parameters.MetricName, parameters.MetricValue), "text/plain", nil)
 
 	if err != nil {
 		return err
