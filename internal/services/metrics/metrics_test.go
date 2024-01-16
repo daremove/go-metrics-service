@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,12 +14,12 @@ func TestMetrics_Save(t *testing.T) {
 
 	testCases := []struct {
 		testName       string
-		saveParameters SaveParameters
+		saveParameters services.MetricSaveParameters
 		testCase       func(t *testing.T, err error)
 	}{
 		{
 			testName: "Should return error if metricType isn't defined",
-			saveParameters: SaveParameters{
+			saveParameters: services.MetricSaveParameters{
 				MetricType: "incorrect",
 			},
 			testCase: func(t *testing.T, err error) {
@@ -27,7 +28,7 @@ func TestMetrics_Save(t *testing.T) {
 		},
 		{
 			testName: "Should return error if value of gauge metric type wasn't parsed correctly",
-			saveParameters: SaveParameters{
+			saveParameters: services.MetricSaveParameters{
 				MetricType:  "gauge",
 				MetricName:  "metricName",
 				MetricValue: "string",
@@ -38,7 +39,7 @@ func TestMetrics_Save(t *testing.T) {
 		},
 		{
 			testName: "Should return error if value of counter metric type wasn't parsed correctly",
-			saveParameters: SaveParameters{
+			saveParameters: services.MetricSaveParameters{
 				MetricType:  "counter",
 				MetricName:  "metricName",
 				MetricValue: "1.1",
@@ -49,7 +50,7 @@ func TestMetrics_Save(t *testing.T) {
 		},
 		{
 			testName: "Should save in storage gauge metric type",
-			saveParameters: SaveParameters{
+			saveParameters: services.MetricSaveParameters{
 				MetricType:  "gauge",
 				MetricName:  "metricName",
 				MetricValue: "1.1",
@@ -63,7 +64,7 @@ func TestMetrics_Save(t *testing.T) {
 		},
 		{
 			testName: "Should save in storage counter metric type",
-			saveParameters: SaveParameters{
+			saveParameters: services.MetricSaveParameters{
 				MetricType:  "counter",
 				MetricName:  "metricName",
 				MetricValue: "100",
@@ -93,8 +94,8 @@ func TestMetrics_GetAll(t *testing.T) {
 		result := metricsService.GetAll()
 
 		assert.Equal(t, 2, len(result))
-		assert.Contains(t, result, MetricItem{Name: "first", Value: "1.11234"})
-		assert.Contains(t, result, MetricItem{Name: "second", Value: "1"})
+		assert.Contains(t, result, services.MetricEntry{Name: "first", Value: "1.11234"})
+		assert.Contains(t, result, services.MetricEntry{Name: "second", Value: "1"})
 	})
 }
 
@@ -103,13 +104,13 @@ func TestMetrics_Get(t *testing.T) {
 
 	testCases := []struct {
 		testName      string
-		getParameters GetParameters
+		getParameters services.MetricGetParameters
 		expectedValue string
 		expectedOk    bool
 	}{
 		{
 			testName: "Should return gauge metricType value",
-			getParameters: GetParameters{
+			getParameters: services.MetricGetParameters{
 				MetricType: "gauge",
 				MetricName: "first",
 			},
@@ -118,7 +119,7 @@ func TestMetrics_Get(t *testing.T) {
 		},
 		{
 			testName: "Should return counter metricType value",
-			getParameters: GetParameters{
+			getParameters: services.MetricGetParameters{
 				MetricType: "counter",
 				MetricName: "second",
 			},
@@ -127,7 +128,7 @@ func TestMetrics_Get(t *testing.T) {
 		},
 		{
 			testName: "Should return nothing if store doesn't contain such value",
-			getParameters: GetParameters{
+			getParameters: services.MetricGetParameters{
 				MetricType: "test",
 				MetricName: "test",
 			},
@@ -138,7 +139,7 @@ func TestMetrics_Get(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			value, ok := metricsService.Get(GetParameters{MetricName: tc.getParameters.MetricName, MetricType: tc.getParameters.MetricType})
+			value, ok := metricsService.Get(services.MetricGetParameters{MetricName: tc.getParameters.MetricName, MetricType: tc.getParameters.MetricType})
 
 			require.Equal(t, tc.expectedOk, ok)
 			assert.Equal(t, tc.expectedValue, value)

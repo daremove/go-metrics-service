@@ -6,52 +6,59 @@ import (
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
-	"reflect"
+	"log"
+	"sync"
 	"time"
 )
 
 func main() {
-	parseFlags()
+	config := NewConfig()
 
-	var data stats.ReadResult
+	var data map[string]float64
+	var mutex sync.Mutex
 	statsService := stats.New()
 
-	fmt.Printf("Starting read stats data every %v and send it every %v to %s", time.Duration(pollInterval)*time.Second, time.Duration(reportInterval)*time.Second, endpoint)
+	log.Printf(
+		"Starting read stats data every %v and send it every %v to %s",
+		time.Duration(config.pollInterval)*time.Second,
+		time.Duration(config.reportInterval)*time.Second,
+		config.endpoint,
+	)
 
 	utils.Parallelize(
 		func() {
 			for {
-				time.Sleep(time.Duration(pollInterval) * time.Second)
+				time.Sleep(time.Duration(config.pollInterval) * time.Second)
 
+				mutex.Lock()
 				data = statsService.Read()
+				mutex.Unlock()
 			}
 		},
 		func() {
 			for {
-				time.Sleep(time.Duration(reportInterval) * time.Second)
+				time.Sleep(time.Duration(config.reportInterval) * time.Second)
 
-				v := reflect.ValueOf(data)
-
-				for i := 0; i < v.NumField(); i++ {
+				mutex.Lock()
+				for metricName, metricValue := range data {
 					metricType := "gauge"
-					metricName := v.Type().Field(i).Name
-					metricValue := v.Field(i)
 
 					if metrics.IsCounterMetricType(metricName) {
 						metricType = "counter"
 					}
 
 					err := serverrouter.SendMetricData(serverrouter.SendMetricDataParameters{
-						URL:         fmt.Sprintf("http://%s", endpoint),
+						URL:         fmt.Sprintf("http://%s", config.endpoint),
 						MetricType:  metricType,
 						MetricName:  metricName,
 						MetricValue: fmt.Sprintf("%v", metricValue),
 					})
 
 					if err != nil {
-						panic(err)
+						log.Println(fmt.Errorf("failed to send metric data: %w", err))
 					}
 				}
+				mutex.Unlock()
 			}
 		},
 	)

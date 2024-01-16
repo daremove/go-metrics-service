@@ -1,20 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
+	"log"
 )
 
 func main() {
-	parseFlags()
+	config := NewConfig()
 
 	store := memstorage.New()
 	metricsService := metrics.New(store)
-	router := serverrouter.New(metricsService, endpoint)
+	router := serverrouter.New(metricsService, config.endpoint)
 
-	fmt.Printf("Running server on %s\n", endpoint)
+	log.Printf("Running server on %s\n", config.endpoint)
 
 	router.Run()
 }

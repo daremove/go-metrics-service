@@ -2,7 +2,7 @@ package serverrouter
 
 import (
 	"fmt"
-	"github.com/daremove/go-metrics-service/internal/services/metrics"
+	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/go-chi/chi/v5"
 	"io"
 	"log"
@@ -11,25 +11,33 @@ import (
 	"strings"
 )
 
-type serverRouter struct {
-	metricsService metrics.Service
+type ServerRouter struct {
+	metricsService MetricsService
 	endpoint       string
 }
 
-func New(metricsService metrics.Service, endpoint string) *serverRouter {
-	return &serverRouter{metricsService, endpoint}
+type MetricsService interface {
+	Save(parameters services.MetricSaveParameters) error
+
+	Get(parameters services.MetricGetParameters) (string, bool)
+
+	GetAll() []services.MetricEntry
 }
 
-func ServerRouter(metricsService metrics.Service) chi.Router {
+func New(metricsService MetricsService, endpoint string) *ServerRouter {
+	return &ServerRouter{metricsService, endpoint}
+}
+
+func (router *ServerRouter) Get() chi.Router {
 	r := chi.NewRouter()
 
 	r.Route("/", func(r chi.Router) {
-		r.Get("/", getAllMetricsHandler(metricsService))
+		r.Get("/", getAllMetricsHandler(router.metricsService))
 
 		r.Route("/update", func(r chi.Router) {
 			r.Route("/{metricType}", func(r chi.Router) {
 				r.Route("/{metricName}", func(r chi.Router) {
-					r.Post("/{metricValue}", updateMetricHandler(metricsService))
+					r.Post("/{metricValue}", updateMetricHandler(router.metricsService))
 
 					r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 						http.Error(w, "metricValue wasn't provided", http.StatusBadRequest)
@@ -47,34 +55,35 @@ func ServerRouter(metricsService metrics.Service) chi.Router {
 		})
 
 		r.Route("/value/{metricType}/{metricName}", func(r chi.Router) {
-			r.Get("/", getMetricValueHandler(metricsService))
+			r.Get("/", getMetricValueHandler(router.metricsService))
 		})
 	})
 
 	return r
 }
 
-func (router *serverRouter) Run() {
-	log.Fatal(http.ListenAndServe(router.endpoint, ServerRouter(router.metricsService)))
+func (router *ServerRouter) Run() {
+	log.Fatal(http.ListenAndServe(router.endpoint, router.Get()))
 }
 
-func updateMetricHandler(metricsService metrics.Service) http.HandlerFunc {
+func updateMetricHandler(metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := metricsService.Save(metrics.SaveParameters{
+		if err := metricsService.Save(services.MetricSaveParameters{
 			MetricType:  chi.URLParam(r, "metricType"),
 			MetricName:  chi.URLParam(r, "metricName"),
 			MetricValue: chi.URLParam(r, "metricValue"),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 	}
 }
 
-func getMetricValueHandler(metricsService metrics.Service) http.HandlerFunc {
+func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		value, ok := metricsService.Get(metrics.GetParameters{
+		value, ok := metricsService.Get(services.MetricGetParameters{
 			MetricType: chi.URLParam(r, "metricType"),
 			MetricName: chi.URLParam(r, "metricName"),
 		})
@@ -84,12 +93,12 @@ func getMetricValueHandler(metricsService metrics.Service) http.HandlerFunc {
 		}
 
 		if _, err := io.WriteString(w, value); err != nil {
-			panic(err)
+			log.Println(fmt.Errorf("failed to write data: %w", err))
 		}
 	}
 }
 
-func getAllMetricsHandler(metricsService metrics.Service) http.HandlerFunc {
+func getAllMetricsHandler(metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var result []string
 
@@ -99,10 +108,8 @@ func getAllMetricsHandler(metricsService metrics.Service) http.HandlerFunc {
 
 		sort.Strings(result)
 
-		_, err := io.WriteString(w, fmt.Sprintf("<html><head><title>All metrics</title></head><body>%s</body></html>", strings.Join(result, "<br />")))
-
-		if err != nil {
-			panic(err)
+		if _, err := io.WriteString(w, fmt.Sprintf("<html><head><title>All metrics</title></head><body>%s</body></html>", strings.Join(result, "<br />"))); err != nil {
+			log.Println(fmt.Errorf("failed to write data: %w", err))
 		}
 	}
 }
@@ -118,13 +125,13 @@ func SendMetricData(parameters SendMetricDataParameters) error {
 	res, err := http.Post(fmt.Sprintf("%s/update/%s/%s/%s", parameters.URL, parameters.MetricType, parameters.MetricName, parameters.MetricValue), "text/plain", nil)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to send data by using POST method: %w", err)
 	}
 
 	err = res.Body.Close()
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to close response body: %w", err)
 	}
 
 	return nil

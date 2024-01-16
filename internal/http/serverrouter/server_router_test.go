@@ -1,7 +1,7 @@
 package serverrouter
 
 import (
-	"github.com/daremove/go-metrics-service/internal/services/metrics"
+	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"net/http"
@@ -53,32 +53,34 @@ type metricsServiceMock struct {
 	data map[string]string
 }
 
-func (m metricsServiceMock) Save(parameters metrics.SaveParameters) error {
+func (m metricsServiceMock) Save(parameters services.MetricSaveParameters) error {
 	return nil
 }
 
-func (m metricsServiceMock) Get(parameters metrics.GetParameters) (string, bool) {
+func (m metricsServiceMock) Get(parameters services.MetricGetParameters) (string, bool) {
 	value, ok := m.data[parameters.MetricName]
 
 	return value, ok
 }
 
-func (m metricsServiceMock) GetAll() []metrics.MetricItem {
-	var result []metrics.MetricItem
+func (m metricsServiceMock) GetAll() []services.MetricEntry {
+	var result []services.MetricEntry
 
 	for key, value := range m.data {
-		result = append(result, metrics.MetricItem{Name: key, Value: value})
+		result = append(result, services.MetricEntry{Name: key, Value: value})
 	}
 
 	return result
 }
 
 func TestServerRouter(t *testing.T) {
-	testServer := httptest.NewServer(ServerRouter(metricsServiceMock{
-		data: map[string]string{
-			"test": "1.1",
-		},
-	}))
+	testServer := httptest.NewServer(
+		New(metricsServiceMock{
+			data: map[string]string{
+				"test": "1.1",
+			},
+		}, "").Get(),
+	)
 	defer testServer.Close()
 
 	testCases := []struct {
