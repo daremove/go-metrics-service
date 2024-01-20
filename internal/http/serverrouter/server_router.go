@@ -2,8 +2,10 @@ package serverrouter
 
 import (
 	"fmt"
+	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 	"io"
 	"log"
 	"net/http"
@@ -30,6 +32,7 @@ func New(metricsService MetricsService, endpoint string) *ServerRouter {
 
 func (router *ServerRouter) Get() chi.Router {
 	r := chi.NewRouter()
+	r.Use(logger.RequestLogger)
 
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", getAllMetricsHandler(router.metricsService))
@@ -93,7 +96,7 @@ func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {
 		}
 
 		if _, err := io.WriteString(w, value); err != nil {
-			log.Println(fmt.Errorf("failed to write data: %w", err))
+			logger.Log.Error("failed to write data", zap.Error(err))
 		}
 	}
 }
@@ -109,7 +112,7 @@ func getAllMetricsHandler(metricsService MetricsService) http.HandlerFunc {
 		sort.Strings(result)
 
 		if _, err := io.WriteString(w, fmt.Sprintf("<html><head><title>All metrics</title></head><body>%s</body></html>", strings.Join(result, "<br />"))); err != nil {
-			log.Println(fmt.Errorf("failed to write data: %w", err))
+			logger.Log.Error("failed to write data", zap.Error(err))
 		}
 	}
 }
