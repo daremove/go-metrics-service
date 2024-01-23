@@ -1,9 +1,13 @@
 package serverrouter
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/logger"
+	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
+	"github.com/daremove/go-metrics-service/internal/utils"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 	"io"
@@ -21,7 +25,11 @@ type ServerRouter struct {
 type MetricsService interface {
 	Save(parameters services.MetricSaveParameters) error
 
+	SaveModel(parameters models.Metrics) error
+
 	Get(parameters services.MetricGetParameters) (string, bool)
+
+	GetModel(parameters models.Metrics) (models.Metrics, bool)
 
 	GetAll() []services.MetricEntry
 }
@@ -52,13 +60,13 @@ func (router *ServerRouter) Get() chi.Router {
 				})
 			})
 
-			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
-				http.Error(w, "metricType wasn't provided", http.StatusBadRequest)
-			})
+			r.Post("/", updateMetricWithJSONHandler(router.metricsService))
 		})
 
-		r.Route("/value/{metricType}/{metricName}", func(r chi.Router) {
-			r.Get("/", getMetricValueHandler(router.metricsService))
+		r.Route("/value", func(r chi.Router) {
+			r.Get("/{metricType}/{metricName}", getMetricValueHandler(router.metricsService))
+
+			r.Post("/", getMetricValueWithJSONHandler(router.metricsService))
 		})
 	})
 
@@ -84,6 +92,40 @@ func updateMetricHandler(metricsService MetricsService) http.HandlerFunc {
 	}
 }
 
+func updateMetricWithJSONHandler(metricsService MetricsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := utils.DecodeJSONRequest[models.Metrics](r)
+
+		if err != nil {
+			switch err.Error() {
+			case utils.UnsupportedContentTypeCode:
+				w.WriteHeader(http.StatusUnsupportedMediaType)
+			case utils.DecoderErrorCode:
+			case utils.ReadBufferErrorCode:
+				logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+
+			return
+		}
+
+		if err := metricsService.SaveModel(data); err != nil {
+			logger.Log.Debug("error saving data in metrics service", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := utils.EncodeJSONRequest[models.Metrics](w, data); err != nil {
+			logger.Log.Debug("error encoding response", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+}
+
 func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		value, ok := metricsService.Get(services.MetricGetParameters{
@@ -93,10 +135,46 @@ func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {
 
 		if !ok {
 			http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+			return
 		}
 
 		if _, err := io.WriteString(w, value); err != nil {
 			logger.Log.Error("failed to write data", zap.Error(err))
+		}
+	}
+}
+
+func getMetricValueWithJSONHandler(metricsService MetricsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := utils.DecodeJSONRequest[models.Metrics](r)
+
+		if err != nil {
+			switch err.Error() {
+			case utils.UnsupportedContentTypeCode:
+				w.WriteHeader(http.StatusUnsupportedMediaType)
+			case utils.DecoderErrorCode:
+			case utils.ReadBufferErrorCode:
+				logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+
+			return
+		}
+
+		value, ok := metricsService.GetModel(data)
+
+		if !ok {
+			http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+			return
+		}
+
+		if err := utils.EncodeJSONRequest[models.Metrics](w, value); err != nil {
+			logger.Log.Debug("error encoding response", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 	}
 }
@@ -126,6 +204,28 @@ type SendMetricDataParameters struct {
 
 func SendMetricData(parameters SendMetricDataParameters) error {
 	res, err := http.Post(fmt.Sprintf("%s/update/%s/%s/%s", parameters.URL, parameters.MetricType, parameters.MetricName, parameters.MetricValue), "text/plain", nil)
+
+	if err != nil {
+		return fmt.Errorf("failed to send data by using POST method: %w", err)
+	}
+
+	err = res.Body.Close()
+
+	if err != nil {
+		return fmt.Errorf("failed to close response body: %w", err)
+	}
+
+	return nil
+}
+
+func SendMetricModelData(url string, parameters models.Metrics) error {
+	body, err := json.Marshal(parameters)
+
+	if err != nil {
+		return fmt.Errorf("failed to marshal data: %w", err)
+	}
+
+	res, err := http.Post(fmt.Sprintf("%s/update", url), "application/json", bytes.NewBuffer(body))
 
 	if err != nil {
 		return fmt.Errorf("failed to send data by using POST method: %w", err)

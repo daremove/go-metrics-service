@@ -8,9 +8,13 @@ import (
 	"testing"
 )
 
-func TestRequest(t *testing.T, ts *httptest.Server, method, path string) (*http.Response, string) {
-	req, err := http.NewRequest(method, ts.URL+path, nil)
+func TestRequest(t *testing.T, ts *httptest.Server, method, path string, headers map[string]string, body io.Reader) (*http.Response, string) {
+	req, err := http.NewRequest(method, ts.URL+path, body)
 	require.NoError(t, err)
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)

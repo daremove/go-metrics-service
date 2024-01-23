@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/logger"
+	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
@@ -43,18 +44,21 @@ func main() {
 
 				mutex.Lock()
 				for metricName, metricValue := range data {
-					metricType := "gauge"
-
-					if metrics.IsCounterMetricType(metricName) {
-						metricType = "counter"
+					payload := models.Metrics{
+						ID:    metricName,
+						MType: "gauge",
 					}
 
-					err := serverrouter.SendMetricData(serverrouter.SendMetricDataParameters{
-						URL:         fmt.Sprintf("http://%s", config.endpoint),
-						MetricType:  metricType,
-						MetricName:  metricName,
-						MetricValue: fmt.Sprintf("%v", metricValue),
-					})
+					if metrics.IsCounterMetricType(metricName) {
+						value := int64(metricValue)
+
+						payload.MType = "counter"
+						payload.Delta = &value
+					} else {
+						payload.Value = &metricValue
+					}
+
+					err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload)
 
 					if err != nil {
 						logger.Log.Error("failed to send metric data", zap.Error(err))
