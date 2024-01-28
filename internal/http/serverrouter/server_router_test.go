@@ -3,6 +3,7 @@ package serverrouter
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/utils"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -59,9 +61,9 @@ func TestSendMetricModelData(t *testing.T) {
 	var valueMock = 2.5
 
 	createServer := func(assertFn func(request *http.Request)) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		return httptest.NewServer(gzipm.GzipMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			assertFn(r)
-		}))
+		})))
 	}
 	testCases := []struct {
 		testName   string
@@ -141,23 +143,14 @@ func (m metricsServiceMock) GetAll() []services.MetricEntry {
 }
 
 func TestServerRouter(t *testing.T) {
-	var deltaMock int64 = 1
-	var valueMock = 2.5
-
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			data: map[string]string{
 				"test": "1.1",
 			},
-			modelData: map[string]models.Metrics{
-				"gauge_test": models.Metrics{ID: "test", MType: "gauge", Value: &valueMock},
-			},
 		}, "").Get(),
 	)
 	defer testServer.Close()
-
-	counterDataMock, _ := json.Marshal(models.Metrics{ID: "counter_test", MType: "counter", Delta: &deltaMock})
-	gaugeDataMock, _ := json.Marshal(models.Metrics{ID: "gauge_test", MType: "gauge", Value: &valueMock})
 
 	testCases := []struct {
 		testName        string
@@ -165,8 +158,6 @@ func TestServerRouter(t *testing.T) {
 		targetURL       string
 		expectedCode    int
 		expectedMessage string
-		headers         map[string]string
-		body            io.Reader
 	}{
 		{
 			testName:        "Should return 404 if metricName parameter wasn't provided",
@@ -215,6 +206,68 @@ func TestServerRouter(t *testing.T) {
 			targetURL:    "/update",
 			expectedCode: http.StatusUnsupportedMediaType,
 		},
+	}
+
+	t.Run("Should return 405 if http method isn't correct", func(testing *testing.T) {
+		for _, methodName := range []string{
+			http.MethodGet,
+			http.MethodHead,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodConnect,
+			http.MethodOptions,
+			http.MethodTrace,
+		} {
+			res, _ := utils.TestRequest(t, testServer, methodName, "/update/metricType/metricName/123", nil, nil)
+			res.Body.Close()
+
+			assert.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
+		}
+	})
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			res, mes := utils.TestRequest(t, testServer, tc.methodName, tc.targetURL, nil, nil)
+			res.Body.Close()
+
+			assert.Equal(t, tc.expectedCode, res.StatusCode)
+			assert.Equal(t, tc.expectedMessage, mes)
+		})
+	}
+}
+
+func TestServerRouterJson(t *testing.T) {
+	var deltaMock int64 = 1
+	var valueMock = 2.5
+
+	counterDataMock, _ := json.Marshal(models.Metrics{ID: "counter_test", MType: "counter", Delta: &deltaMock})
+	gaugeDataMock, _ := json.Marshal(models.Metrics{ID: "gauge_test", MType: "gauge", Value: &valueMock})
+
+	testServer := httptest.NewServer(
+		New(metricsServiceMock{
+			modelData: map[string]models.Metrics{
+				"gauge_test": {ID: "test", MType: "gauge", Value: &valueMock},
+			},
+		}, "").Get(),
+	)
+	defer testServer.Close()
+
+	testCases := []struct {
+		testName        string
+		methodName      string
+		targetURL       string
+		expectedCode    int
+		expectedMessage string
+		headers         map[string]string
+		body            io.Reader
+	}{
+		{
+			testName:     "Should return 414 if appropriate content-type wasn't set for json handler",
+			methodName:   http.MethodPost,
+			targetURL:    "/update",
+			expectedCode: http.StatusUnsupportedMediaType,
+		},
 		{
 			testName:        "Should save correctly metric data by using model",
 			methodName:      http.MethodPost,
@@ -250,24 +303,6 @@ func TestServerRouter(t *testing.T) {
 		},
 	}
 
-	t.Run("Should return 405 if http method isn't correct", func(testing *testing.T) {
-		for _, methodName := range []string{
-			http.MethodGet,
-			http.MethodHead,
-			http.MethodPut,
-			http.MethodPatch,
-			http.MethodDelete,
-			http.MethodConnect,
-			http.MethodOptions,
-			http.MethodTrace,
-		} {
-			res, _ := utils.TestRequest(t, testServer, methodName, "/update/metricType/metricName/123", nil, nil)
-			res.Body.Close()
-
-			assert.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
-		}
-	})
-
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
 			res, mes := utils.TestRequest(t, testServer, tc.methodName, tc.targetURL, tc.headers, tc.body)
@@ -277,4 +312,36 @@ func TestServerRouter(t *testing.T) {
 			assert.Equal(t, tc.expectedMessage, mes)
 		})
 	}
+}
+
+func TestServerRouterGzip(t *testing.T) {
+	testServer := httptest.NewServer(
+		New(metricsServiceMock{
+			data: map[string]string{
+				"test": "1.1",
+			},
+		}, "").Get(),
+	)
+	defer testServer.Close()
+
+	t.Run("Should return gzip data", func(t *testing.T) {
+		res, mes := utils.TestRequest(t, testServer, http.MethodGet, "/", map[string]string{
+			"Content-type":    "text/html",
+			"Accept-Encoding": "gzip",
+		}, nil)
+		err := res.Body.Close()
+
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		reader, err := utils.NewCompressReader(io.NopCloser(strings.NewReader(mes)))
+
+		require.NoError(t, err)
+
+		result, err := io.ReadAll(reader)
+
+		require.NoError(t, err)
+
+		assert.Equal(t, "<html><head><title>All metrics</title></head><body>test - 1.1</body></html>", string(result))
+	})
 }

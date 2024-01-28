@@ -2,9 +2,11 @@ package serverrouter
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/logger"
+	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/utils"
@@ -40,7 +42,7 @@ func New(metricsService MetricsService, endpoint string) *ServerRouter {
 
 func (router *ServerRouter) Get() chi.Router {
 	r := chi.NewRouter()
-	r.Use(logger.RequestLogger)
+	r.Use(logger.RequestLogger, gzipm.GzipMiddleware)
 
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", getAllMetricsHandler(router.metricsService))
@@ -189,6 +191,8 @@ func getAllMetricsHandler(metricsService MetricsService) http.HandlerFunc {
 
 		sort.Strings(result)
 
+		w.Header().Set("Content-Type", "text/html")
+
 		if _, err := io.WriteString(w, fmt.Sprintf("<html><head><title>All metrics</title></head><body>%s</body></html>", strings.Join(result, "<br />"))); err != nil {
 			logger.Log.Error("failed to write data", zap.Error(err))
 		}
@@ -225,7 +229,34 @@ func SendMetricModelData(url string, parameters models.Metrics) error {
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	res, err := http.Post(fmt.Sprintf("%s/update", url), "application/json", bytes.NewBuffer(body))
+	var buf bytes.Buffer
+
+	gzipWriter := gzip.NewWriter(&buf)
+	_, err = gzipWriter.Write(body)
+
+	if err != nil {
+		return fmt.Errorf("failed to gzip data: %w", err)
+	}
+
+	err = gzipWriter.Close()
+
+	if err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	body = buf.Bytes()
+	client := &http.Client{}
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/update", url), bytes.NewBuffer(body))
+
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	res, err := client.Do(req)
 
 	if err != nil {
 		return fmt.Errorf("failed to send data by using POST method: %w", err)
