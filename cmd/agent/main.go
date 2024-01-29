@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
-	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
-	"go.uber.org/zap"
 	"log"
 	"sync"
 	"time"
@@ -58,10 +56,8 @@ func main() {
 						payload.Value = &metricValue
 					}
 
-					err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload)
-
-					if err != nil {
-						logger.Log.Error("failed to send metric data", zap.Error(err))
+					if err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload); err != nil {
+						log.Printf("failed to send metric data: %s", err)
 					}
 				}
 				mutex.Unlock()
