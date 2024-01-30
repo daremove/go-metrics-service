@@ -2,6 +2,7 @@ package serverrouter
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
@@ -275,7 +276,7 @@ func TestServerRouterJson(t *testing.T) {
 			expectedCode:    http.StatusOK,
 			expectedMessage: "{\"id\":\"counter_test\",\"type\":\"counter\",\"delta\":1}",
 			headers: map[string]string{
-				"Content-type": "application/json",
+				"Content-Type": "application/json",
 			},
 			body: bytes.NewBuffer(counterDataMock),
 		},
@@ -286,7 +287,7 @@ func TestServerRouterJson(t *testing.T) {
 			expectedCode:    http.StatusOK,
 			expectedMessage: "{\"id\":\"test\",\"type\":\"gauge\",\"value\":2.5}",
 			headers: map[string]string{
-				"Content-type": "application/json",
+				"Content-Type": "application/json",
 			},
 			body: bytes.NewBuffer(gaugeDataMock),
 		},
@@ -297,7 +298,7 @@ func TestServerRouterJson(t *testing.T) {
 			expectedCode:    http.StatusNotFound,
 			expectedMessage: "Metric value with such parameters wasn't found\n",
 			headers: map[string]string{
-				"Content-type": "application/json",
+				"Content-Type": "application/json",
 			},
 			body: bytes.NewBuffer(counterDataMock),
 		},
@@ -315,10 +316,14 @@ func TestServerRouterJson(t *testing.T) {
 }
 
 func TestServerRouterGzip(t *testing.T) {
+	var valueMock = 1.1
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			data: map[string]string{
 				"test": "1.1",
+			},
+			modelData: map[string]models.Metrics{
+				"test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
 		}, "").Get(),
 	)
@@ -326,7 +331,7 @@ func TestServerRouterGzip(t *testing.T) {
 
 	t.Run("Should return gzip data", func(t *testing.T) {
 		res, mes := utils.TestRequest(t, testServer, http.MethodGet, "/", map[string]string{
-			"Content-type":    "text/html",
+			"Content-Type":    "text/html",
 			"Accept-Encoding": "gzip",
 		}, nil)
 		err := res.Body.Close()
@@ -343,5 +348,38 @@ func TestServerRouterGzip(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "<html><head><title>All metrics</title></head><body>test - 1.1</body></html>", string(result))
+	})
+
+	t.Run("Should accept gzip data", func(t *testing.T) {
+		body, err := json.Marshal(models.Metrics{
+			ID:    "test",
+			MType: "gauge",
+			Value: &valueMock,
+		})
+
+		require.NoError(t, err)
+
+		var buf bytes.Buffer
+
+		gzipWriter := gzip.NewWriter(&buf)
+		_, err = gzipWriter.Write(body)
+
+		require.NoError(t, err)
+
+		err = gzipWriter.Close()
+
+		require.NoError(t, err)
+
+		body = buf.Bytes()
+		res, mes := utils.TestRequest(t, testServer, http.MethodPost, "/value", map[string]string{
+			"Content-Type":     "application/json",
+			"Content-Encoding": "gzip",
+		}, bytes.NewBuffer(body))
+		err = res.Body.Close()
+
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		assert.Equal(t, "{\"id\":\"test\",\"type\":\"gauge\",\"value\":1.1}", mes)
 	})
 }

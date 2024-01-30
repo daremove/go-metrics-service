@@ -2,6 +2,7 @@ package serverrouter
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 	"io"
 	"log"
@@ -42,7 +44,10 @@ func New(metricsService MetricsService, endpoint string) *ServerRouter {
 
 func (router *ServerRouter) Get() chi.Router {
 	r := chi.NewRouter()
-	r.Use(logger.RequestLogger, gzipm.GzipMiddleware)
+
+	r.Use(logger.RequestLogger)
+	r.Use(middleware.NewCompressor(flate.DefaultCompression).Handler)
+	r.Use(gzipm.GzipMiddleware)
 
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", getAllMetricsHandler(router.metricsService))
@@ -102,10 +107,6 @@ func updateMetricWithJSONHandler(metricsService MetricsService) http.HandlerFunc
 			switch err.Error() {
 			case utils.UnsupportedContentTypeCode:
 				w.WriteHeader(http.StatusUnsupportedMediaType)
-			case utils.DecoderErrorCode:
-			case utils.ReadBufferErrorCode:
-				logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
-				w.WriteHeader(http.StatusInternalServerError)
 			default:
 				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
 				w.WriteHeader(http.StatusInternalServerError)
@@ -154,10 +155,6 @@ func getMetricValueWithJSONHandler(metricsService MetricsService) http.HandlerFu
 			switch err.Error() {
 			case utils.UnsupportedContentTypeCode:
 				w.WriteHeader(http.StatusUnsupportedMediaType)
-			case utils.DecoderErrorCode:
-			case utils.ReadBufferErrorCode:
-				logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
-				w.WriteHeader(http.StatusInternalServerError)
 			default:
 				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
 				w.WriteHeader(http.StatusInternalServerError)

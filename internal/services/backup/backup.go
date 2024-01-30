@@ -16,9 +16,9 @@ type backupFile struct {
 }
 
 type Backup struct {
-	storage      Storage
-	config       Config
-	proxyStorage proxyStorage
+	storage     Storage
+	config      Config
+	FileStorage Storage
 }
 
 type Storage interface {
@@ -48,6 +48,10 @@ func (storage proxyStorage) AddGauge(key string, value float64) error {
 		return err
 	}
 
+	if storage.config.StoreInterval > 0 {
+		return nil
+	}
+
 	if err := backupData(storage.originalStorage, storage.config.FileStoragePath); err != nil {
 		return fmt.Errorf("error has occurred during backup data: %s", err)
 	}
@@ -58,6 +62,10 @@ func (storage proxyStorage) AddGauge(key string, value float64) error {
 func (storage proxyStorage) AddCounter(key string, value int64) error {
 	if err := storage.originalStorage.AddCounter(key, value); err != nil {
 		return err
+	}
+
+	if storage.config.StoreInterval > 0 {
+		return nil
 	}
 
 	if err := backupData(storage.originalStorage, storage.config.FileStoragePath); err != nil {
@@ -99,9 +107,9 @@ func backupData(storage Storage, filePath string) error {
 
 func New(storage Storage, config Config) (*Backup, error) {
 	backupService := &Backup{
-		storage:      storage,
-		config:       config,
-		proxyStorage: proxyStorage{originalStorage: storage, config: config},
+		storage:     storage,
+		config:      config,
+		FileStorage: proxyStorage{storage, config},
 	}
 
 	if config.FileStoragePath == "" {
@@ -140,7 +148,7 @@ func New(storage Storage, config Config) (*Backup, error) {
 			for {
 				time.Sleep(time.Duration(config.StoreInterval) * time.Second)
 
-				if err := backupData(storage, config.FileStoragePath); err != nil {
+				if err := backupService.BackupData(); err != nil {
 					logger.Log.Error("error has occurred during backup data", zap.Error(err))
 					continue
 				}
@@ -149,16 +157,6 @@ func New(storage Storage, config Config) (*Backup, error) {
 	}
 
 	return backupService, nil
-}
-
-func (b *Backup) GetProxyStorage() *Storage {
-	if b.config.StoreInterval != 0 {
-		return &b.storage
-	}
-
-	var st Storage = b.proxyStorage
-
-	return &st
 }
 
 func (b *Backup) BackupData() error {

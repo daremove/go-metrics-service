@@ -28,8 +28,7 @@ func main() {
 		log.Fatalf("Backup service wasn't initialized due to %s", err)
 	}
 
-	proxyStore := backupService.GetProxyStorage()
-	metricsService := metrics.New(*proxyStore)
+	metricsService := metrics.New(backupService.FileStorage)
 	router := serverrouter.New(metricsService, config.endpoint)
 
 	utils.HandleTerminationProcess(func() {

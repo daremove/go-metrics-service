@@ -13,7 +13,7 @@ func TestRequest(t *testing.T, ts *httptest.Server, method, path string, headers
 	require.NoError(t, err)
 
 	req.Header.Set("Accept-Encoding", "identity")
-	
+
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}

@@ -9,8 +9,6 @@ import (
 
 const (
 	UnsupportedContentTypeCode = "UnsupportedContentTypeCode"
-	DecoderErrorCode           = "DecoderErrorCode"
-	ReadBufferErrorCode        = "ReadBufferErrorCode"
 )
 
 func DecodeJSONRequest[Model interface{}](r *http.Request) (Model, error) {
@@ -26,11 +24,11 @@ func DecodeJSONRequest[Model interface{}](r *http.Request) (Model, error) {
 	_, err := buf.ReadFrom(r.Body)
 
 	if err != nil {
-		return emptyResult, errors.New(UnsupportedContentTypeCode)
+		return emptyResult, err
 	}
 
 	if err = json.Unmarshal(buf.Bytes(), &parsedData); err != nil {
-		return emptyResult, errors.New(DecoderErrorCode)
+		return emptyResult, err
 	}
 
 	return parsedData, nil
