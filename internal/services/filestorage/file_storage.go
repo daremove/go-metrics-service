@@ -1,4 +1,4 @@
-package backup
+package filestorage
 
 import (
 	"encoding/json"
@@ -15,10 +15,10 @@ type backupFile struct {
 	Gauges   []storage.GaugeMetric   `json:"gauges"`
 }
 
-type Backup struct {
-	storage     Storage
-	config      Config
-	FileStorage Storage
+type FileStorage struct {
+	Storage
+	storage Storage
+	config  Config
 }
 
 type Storage interface {
@@ -38,60 +38,55 @@ type Config struct {
 	Restore         bool
 }
 
-type proxyStorage struct {
-	originalStorage Storage
-	config          Config
-}
-
-func (storage proxyStorage) AddGauge(key string, value float64) error {
-	if err := storage.originalStorage.AddGauge(key, value); err != nil {
+func (fs FileStorage) AddGauge(key string, value float64) error {
+	if err := fs.storage.AddGauge(key, value); err != nil {
 		return err
 	}
 
-	if storage.config.StoreInterval > 0 {
+	if fs.config.StoreInterval > 0 {
 		return nil
 	}
 
-	if err := backupData(storage.originalStorage, storage.config.FileStoragePath); err != nil {
+	if err := backupData(fs.storage, fs.config.FileStoragePath); err != nil {
 		return fmt.Errorf("error has occurred during backup data: %s", err)
 	}
 
 	return nil
 }
 
-func (storage proxyStorage) AddCounter(key string, value int64) error {
-	if err := storage.originalStorage.AddCounter(key, value); err != nil {
+func (fs FileStorage) AddCounter(key string, value int64) error {
+	if err := fs.storage.AddCounter(key, value); err != nil {
 		return err
 	}
 
-	if storage.config.StoreInterval > 0 {
+	if fs.config.StoreInterval > 0 {
 		return nil
 	}
 
-	if err := backupData(storage.originalStorage, storage.config.FileStoragePath); err != nil {
+	if err := backupData(fs.storage, fs.config.FileStoragePath); err != nil {
 		return fmt.Errorf("error has occurred during backup data: %s", err)
 	}
 
 	return nil
 }
 
-func (storage proxyStorage) GetGaugeMetric(key string) (float64, bool) {
-	return storage.originalStorage.GetGaugeMetric(key)
+func (fs FileStorage) GetGaugeMetric(key string) (float64, bool) {
+	return fs.storage.GetGaugeMetric(key)
 }
-func (storage proxyStorage) GetGaugeMetrics() []storage.GaugeMetric {
-	return storage.originalStorage.GetGaugeMetrics()
+func (fs FileStorage) GetGaugeMetrics() []storage.GaugeMetric {
+	return fs.storage.GetGaugeMetrics()
 }
-func (storage proxyStorage) GetCounterMetric(key string) (int64, bool) {
-	return storage.originalStorage.GetCounterMetric(key)
+func (fs FileStorage) GetCounterMetric(key string) (int64, bool) {
+	return fs.storage.GetCounterMetric(key)
 }
-func (storage proxyStorage) GetCounterMetrics() []storage.CounterMetric {
-	return storage.originalStorage.GetCounterMetrics()
+func (fs FileStorage) GetCounterMetrics() []storage.CounterMetric {
+	return fs.storage.GetCounterMetrics()
 }
 
-func backupData(storage Storage, filePath string) error {
+func backupData(fs Storage, filePath string) error {
 	serialisedData, err := json.Marshal(backupFile{
-		Counters: storage.GetCounterMetrics(),
-		Gauges:   storage.GetGaugeMetrics(),
+		Counters: fs.GetCounterMetrics(),
+		Gauges:   fs.GetGaugeMetrics(),
 	})
 
 	if err != nil {
@@ -105,15 +100,14 @@ func backupData(storage Storage, filePath string) error {
 	return nil
 }
 
-func New(storage Storage, config Config) (*Backup, error) {
-	backupService := &Backup{
-		storage:     storage,
-		config:      config,
-		FileStorage: proxyStorage{storage, config},
+func New(storage Storage, config Config) (*FileStorage, error) {
+	fileStorage := &FileStorage{
+		storage: storage,
+		config:  config,
 	}
 
 	if config.FileStoragePath == "" {
-		return backupService, nil
+		return fileStorage, nil
 	}
 
 	if config.Restore {
@@ -148,7 +142,7 @@ func New(storage Storage, config Config) (*Backup, error) {
 			for {
 				time.Sleep(time.Duration(config.StoreInterval) * time.Second)
 
-				if err := backupService.BackupData(); err != nil {
+				if err := fileStorage.BackupData(); err != nil {
 					logger.Log.Error("error has occurred during backup data", zap.Error(err))
 					continue
 				}
@@ -156,9 +150,9 @@ func New(storage Storage, config Config) (*Backup, error) {
 		}()
 	}
 
-	return backupService, nil
+	return fileStorage, nil
 }
 
-func (b *Backup) BackupData() error {
-	return backupData(b.storage, b.config.FileStoragePath)
+func (fs FileStorage) BackupData() error {
+	return backupData(fs.storage, fs.config.FileStoragePath)
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/logger"
-	"github.com/daremove/go-metrics-service/internal/services/backup"
+	"github.com/daremove/go-metrics-service/internal/services/filestorage"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/daremove/go-metrics-service/internal/utils"
@@ -18,7 +18,7 @@ func main() {
 	}
 
 	store := memstorage.New()
-	backupService, err := backup.New(store, backup.Config{
+	fileStorage, err := filestorage.New(store, filestorage.Config{
 		StoreInterval:   config.storeInterval,
 		FileStoragePath: config.fileStoragePath,
 		Restore:         config.restore,
@@ -28,11 +28,11 @@ func main() {
 		log.Fatalf("Backup service wasn't initialized due to %s", err)
 	}
 
-	metricsService := metrics.New(backupService.FileStorage)
+	metricsService := metrics.New(fileStorage)
 	router := serverrouter.New(metricsService, config.endpoint)
 
 	utils.HandleTerminationProcess(func() {
-		if err := backupService.BackupData(); err != nil {
+		if err := fileStorage.BackupData(); err != nil {
 			log.Fatalf("Cannot backup data data after termination process %s", err)
 		}
 	})
