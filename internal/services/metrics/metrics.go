@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/storage"
 	"strconv"
@@ -57,6 +58,23 @@ func (m *Metrics) Save(parameters services.MetricSaveParameters) error {
 	return nil
 }
 
+func (m *Metrics) SaveModel(parameters models.Metrics) error {
+	switch parameters.MType {
+	case "gauge":
+		if err := m.storage.AddGauge(parameters.ID, *parameters.Value); err != nil {
+			return err
+		}
+	case "counter":
+		if err := m.storage.AddCounter(parameters.ID, *parameters.Delta); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("metrict type %s isn't defined", parameters.MType)
+	}
+
+	return nil
+}
+
 func (m *Metrics) Get(parameters services.MetricGetParameters) (string, bool) {
 	switch parameters.MetricType {
 	case "gauge":
@@ -69,6 +87,29 @@ func (m *Metrics) Get(parameters services.MetricGetParameters) (string, bool) {
 		return fmt.Sprintf("%v", value), ok
 	default:
 		return "", false
+	}
+}
+
+func (m *Metrics) GetModel(parameters models.Metrics) (models.Metrics, bool) {
+	switch parameters.MType {
+	case "gauge":
+		value, ok := m.storage.GetGaugeMetric(parameters.ID)
+
+		return models.Metrics{
+			ID:    parameters.ID,
+			MType: parameters.MType,
+			Value: &value,
+		}, ok
+	case "counter":
+		value, ok := m.storage.GetCounterMetric(parameters.ID)
+
+		return models.Metrics{
+			ID:    parameters.ID,
+			MType: parameters.MType,
+			Delta: &value,
+		}, ok
+	default:
+		return models.Metrics{}, false
 	}
 }
 

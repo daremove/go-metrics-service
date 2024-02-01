@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/stretchr/testify/assert"
@@ -87,6 +88,66 @@ func TestMetrics_Save(t *testing.T) {
 	}
 }
 
+func TestMetrics_SaveModel(t *testing.T) {
+	var deltaMock int64 = 100
+	var valueMock = 1.1
+
+	storeMock := memstorage.NewWithPrefilledData(map[string]float64{}, map[string]int64{})
+	metricsService := New(storeMock)
+
+	testCases := []struct {
+		testName       string
+		saveParameters models.Metrics
+		testCase       func(t *testing.T, err error)
+	}{
+		{
+			testName: "Should return error if metricType isn't defined",
+			saveParameters: models.Metrics{
+				MType: "incorrect",
+			},
+			testCase: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
+			testName: "Should save in storage gauge metric type",
+			saveParameters: models.Metrics{
+				ID:    "metricName",
+				MType: "gauge",
+				Value: &valueMock,
+			},
+			testCase: func(t *testing.T, err error) {
+				value, _ := storeMock.GetGaugeMetric("metricName")
+
+				require.NoError(t, err)
+				assert.Equal(t, 1.1, value)
+			},
+		},
+		{
+			testName: "Should save in storage counter metric type",
+			saveParameters: models.Metrics{
+				ID:    "metricName",
+				MType: "counter",
+				Delta: &deltaMock,
+			},
+			testCase: func(t *testing.T, err error) {
+				value, _ := storeMock.GetCounterMetric("metricName")
+
+				require.NoError(t, err)
+				assert.Equal(t, int64(100), value)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			err := metricsService.SaveModel(tc.saveParameters)
+
+			tc.testCase(t, err)
+		})
+	}
+}
+
 func TestMetrics_GetAll(t *testing.T) {
 	metricsService := New(memstorage.NewWithPrefilledData(map[string]float64{"first": 1.11234}, map[string]int64{"second": 1}))
 
@@ -143,6 +204,71 @@ func TestMetrics_Get(t *testing.T) {
 
 			require.Equal(t, tc.expectedOk, ok)
 			assert.Equal(t, tc.expectedValue, value)
+		})
+	}
+}
+
+func TestMetrics_GetModel(t *testing.T) {
+	var deltaMock int64 = 1
+	var valueMock = 1.1
+
+	metricsService := New(memstorage.NewWithPrefilledData(map[string]float64{"first": valueMock}, map[string]int64{"second": deltaMock}))
+
+	testCases := []struct {
+		testName      string
+		getParameters models.Metrics
+		expectedValue models.Metrics
+		expectedOk    bool
+	}{
+		{
+			testName: "Should return gauge metricType value",
+			getParameters: models.Metrics{
+				MType: "gauge",
+				ID:    "first",
+			},
+			expectedValue: models.Metrics{
+				MType: "gauge",
+				ID:    "first",
+				Value: &valueMock,
+			},
+			expectedOk: true,
+		},
+		{
+			testName: "Should return counter metricType value",
+			getParameters: models.Metrics{
+				MType: "counter",
+				ID:    "second",
+			},
+			expectedValue: models.Metrics{
+				MType: "counter",
+				ID:    "second",
+				Delta: &deltaMock,
+			},
+			expectedOk: true,
+		},
+		{
+			testName: "Should return nothing if store doesn't contain such value",
+			getParameters: models.Metrics{
+				MType: "test",
+				ID:    "test",
+			},
+			expectedValue: models.Metrics{
+				MType: "counter",
+				ID:    "second",
+			},
+			expectedOk: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			value, ok := metricsService.GetModel(tc.getParameters)
+
+			require.Equal(t, tc.expectedOk, ok)
+
+			if ok {
+				assert.Equal(t, tc.expectedValue, value)
+			}
 		})
 	}
 }
