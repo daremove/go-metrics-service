@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
@@ -57,10 +58,11 @@ func TestMetrics_Save(t *testing.T) {
 				MetricValue: "1.1",
 			},
 			testCase: func(t *testing.T, err error) {
-				value, _ := storeMock.GetGaugeMetric("metricName")
+				value, _ := storeMock.GetGaugeMetric(context.TODO(), "metricName")
 
 				require.NoError(t, err)
-				assert.Equal(t, 1.1, value)
+				assert.Equal(t, 1.1, value.Value)
+				assert.Equal(t, "metricName", value.Name)
 			},
 		},
 		{
@@ -71,17 +73,18 @@ func TestMetrics_Save(t *testing.T) {
 				MetricValue: "100",
 			},
 			testCase: func(t *testing.T, err error) {
-				value, _ := storeMock.GetCounterMetric("metricName")
+				value, _ := storeMock.GetCounterMetric(context.TODO(), "metricName")
 
 				require.NoError(t, err)
-				assert.Equal(t, int64(100), value)
+				assert.Equal(t, int64(100), value.Value)
+				assert.Equal(t, "metricName", value.Name)
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			err := metricsService.Save(tc.saveParameters)
+			err := metricsService.Save(context.TODO(), tc.saveParameters)
 
 			tc.testCase(t, err)
 		})
@@ -117,10 +120,11 @@ func TestMetrics_SaveModel(t *testing.T) {
 				Value: &valueMock,
 			},
 			testCase: func(t *testing.T, err error) {
-				value, _ := storeMock.GetGaugeMetric("metricName")
+				value, _ := storeMock.GetGaugeMetric(context.TODO(), "metricName")
 
 				require.NoError(t, err)
-				assert.Equal(t, 1.1, value)
+				assert.Equal(t, 1.1, value.Value)
+				assert.Equal(t, "metricName", value.Name)
 			},
 		},
 		{
@@ -131,17 +135,18 @@ func TestMetrics_SaveModel(t *testing.T) {
 				Delta: &deltaMock,
 			},
 			testCase: func(t *testing.T, err error) {
-				value, _ := storeMock.GetCounterMetric("metricName")
+				value, _ := storeMock.GetCounterMetric(context.TODO(), "metricName")
 
 				require.NoError(t, err)
-				assert.Equal(t, int64(100), value)
+				assert.Equal(t, int64(100), value.Value)
+				assert.Equal(t, "metricName", value.Name)
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			err := metricsService.SaveModel(tc.saveParameters)
+			err := metricsService.SaveModel(context.TODO(), tc.saveParameters)
 
 			tc.testCase(t, err)
 		})
@@ -152,8 +157,9 @@ func TestMetrics_GetAll(t *testing.T) {
 	metricsService := New(memstorage.NewWithPrefilledData(map[string]float64{"first": 1.11234}, map[string]int64{"second": 1}))
 
 	t.Run("Should return all metrics", func(t *testing.T) {
-		result := metricsService.GetAll()
+		result, err := metricsService.GetAll(context.TODO())
 
+		require.NoError(t, err)
 		assert.Equal(t, 2, len(result))
 		assert.Contains(t, result, services.MetricEntry{Name: "first", Value: "1.11234"})
 		assert.Contains(t, result, services.MetricEntry{Name: "second", Value: "1"})
@@ -167,7 +173,7 @@ func TestMetrics_Get(t *testing.T) {
 		testName      string
 		getParameters services.MetricGetParameters
 		expectedValue string
-		expectedOk    bool
+		expectedError error
 	}{
 		{
 			testName: "Should return gauge metricType value",
@@ -176,7 +182,7 @@ func TestMetrics_Get(t *testing.T) {
 				MetricName: "first",
 			},
 			expectedValue: "1.1",
-			expectedOk:    true,
+			expectedError: nil,
 		},
 		{
 			testName: "Should return counter metricType value",
@@ -185,7 +191,7 @@ func TestMetrics_Get(t *testing.T) {
 				MetricName: "second",
 			},
 			expectedValue: "1",
-			expectedOk:    true,
+			expectedError: nil,
 		},
 		{
 			testName: "Should return nothing if store doesn't contain such value",
@@ -194,15 +200,15 @@ func TestMetrics_Get(t *testing.T) {
 				MetricName: "test",
 			},
 			expectedValue: "",
-			expectedOk:    false,
+			expectedError: services.ErrMetricNotFound,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			value, ok := metricsService.Get(services.MetricGetParameters{MetricName: tc.getParameters.MetricName, MetricType: tc.getParameters.MetricType})
+			value, err := metricsService.Get(context.TODO(), services.MetricGetParameters{MetricName: tc.getParameters.MetricName, MetricType: tc.getParameters.MetricType})
 
-			require.Equal(t, tc.expectedOk, ok)
+			require.Equal(t, tc.expectedError, err)
 			assert.Equal(t, tc.expectedValue, value)
 		})
 	}
@@ -218,7 +224,7 @@ func TestMetrics_GetModel(t *testing.T) {
 		testName      string
 		getParameters models.Metrics
 		expectedValue models.Metrics
-		expectedOk    bool
+		expectedError error
 	}{
 		{
 			testName: "Should return gauge metricType value",
@@ -231,7 +237,7 @@ func TestMetrics_GetModel(t *testing.T) {
 				ID:    "first",
 				Value: &valueMock,
 			},
-			expectedOk: true,
+			expectedError: nil,
 		},
 		{
 			testName: "Should return counter metricType value",
@@ -244,7 +250,7 @@ func TestMetrics_GetModel(t *testing.T) {
 				ID:    "second",
 				Delta: &deltaMock,
 			},
-			expectedOk: true,
+			expectedError: nil,
 		},
 		{
 			testName: "Should return nothing if store doesn't contain such value",
@@ -252,21 +258,18 @@ func TestMetrics_GetModel(t *testing.T) {
 				MType: "test",
 				ID:    "test",
 			},
-			expectedValue: models.Metrics{
-				MType: "counter",
-				ID:    "second",
-			},
-			expectedOk: false,
+			expectedValue: models.Metrics{},
+			expectedError: services.ErrMetricNotFound,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			value, ok := metricsService.GetModel(tc.getParameters)
+			value, err := metricsService.GetModel(context.TODO(), tc.getParameters)
 
-			require.Equal(t, tc.expectedOk, ok)
+			require.Equal(t, tc.expectedError, err)
 
-			if ok {
+			if err == nil {
 				assert.Equal(t, tc.expectedValue, value)
 			}
 		})

@@ -1,6 +1,7 @@
 package filestorage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/logger"
@@ -22,14 +23,14 @@ type FileStorage struct {
 }
 
 type Storage interface {
-	GetGaugeMetric(key string) (float64, bool)
-	GetGaugeMetrics() []storage.GaugeMetric
+	GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error)
+	GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error)
 
-	GetCounterMetric(key string) (int64, bool)
-	GetCounterMetrics() []storage.CounterMetric
+	GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error)
+	GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error)
 
-	AddGauge(key string, value float64) error
-	AddCounter(key string, value int64) error
+	AddGauge(ctx context.Context, key string, value float64) error
+	AddCounter(ctx context.Context, key string, value int64) error
 }
 
 type Config struct {
@@ -38,8 +39,8 @@ type Config struct {
 	Restore         bool
 }
 
-func (fs FileStorage) AddGauge(key string, value float64) error {
-	if err := fs.storage.AddGauge(key, value); err != nil {
+func (fs FileStorage) AddGauge(ctx context.Context, key string, value float64) error {
+	if err := fs.storage.AddGauge(ctx, key, value); err != nil {
 		return err
 	}
 
@@ -47,15 +48,15 @@ func (fs FileStorage) AddGauge(key string, value float64) error {
 		return nil
 	}
 
-	if err := backupData(fs.storage, fs.config.FileStoragePath); err != nil {
+	if err := backupData(ctx, fs.storage, fs.config.FileStoragePath); err != nil {
 		return fmt.Errorf("error has occurred during backup data: %s", err)
 	}
 
 	return nil
 }
 
-func (fs FileStorage) AddCounter(key string, value int64) error {
-	if err := fs.storage.AddCounter(key, value); err != nil {
+func (fs FileStorage) AddCounter(ctx context.Context, key string, value int64) error {
+	if err := fs.storage.AddCounter(ctx, key, value); err != nil {
 		return err
 	}
 
@@ -63,30 +64,42 @@ func (fs FileStorage) AddCounter(key string, value int64) error {
 		return nil
 	}
 
-	if err := backupData(fs.storage, fs.config.FileStoragePath); err != nil {
+	if err := backupData(ctx, fs.storage, fs.config.FileStoragePath); err != nil {
 		return fmt.Errorf("error has occurred during backup data: %s", err)
 	}
 
 	return nil
 }
 
-func (fs FileStorage) GetGaugeMetric(key string) (float64, bool) {
-	return fs.storage.GetGaugeMetric(key)
+func (fs FileStorage) GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error) {
+	return fs.storage.GetGaugeMetric(ctx, key)
 }
-func (fs FileStorage) GetGaugeMetrics() []storage.GaugeMetric {
-	return fs.storage.GetGaugeMetrics()
+func (fs FileStorage) GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error) {
+	return fs.storage.GetGaugeMetrics(ctx)
 }
-func (fs FileStorage) GetCounterMetric(key string) (int64, bool) {
-	return fs.storage.GetCounterMetric(key)
+func (fs FileStorage) GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error) {
+	return fs.storage.GetCounterMetric(ctx, key)
 }
-func (fs FileStorage) GetCounterMetrics() []storage.CounterMetric {
-	return fs.storage.GetCounterMetrics()
+func (fs FileStorage) GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error) {
+	return fs.storage.GetCounterMetrics(ctx)
 }
 
-func backupData(fs Storage, filePath string) error {
+func backupData(ctx context.Context, fs Storage, filePath string) error {
+	counterMetrics, err := fs.GetCounterMetrics(ctx)
+
+	if err != nil {
+		return fmt.Errorf("cannot serialize data: %s", err)
+	}
+
+	gaugeMetrics, err := fs.GetGaugeMetrics(ctx)
+
+	if err != nil {
+		return fmt.Errorf("cannot serialize data: %s", err)
+	}
+
 	serialisedData, err := json.Marshal(backupFile{
-		Counters: fs.GetCounterMetrics(),
-		Gauges:   fs.GetGaugeMetrics(),
+		Counters: counterMetrics,
+		Gauges:   gaugeMetrics,
 	})
 
 	if err != nil {
@@ -100,7 +113,7 @@ func backupData(fs Storage, filePath string) error {
 	return nil
 }
 
-func New(storage Storage, config Config) (*FileStorage, error) {
+func New(ctx context.Context, storage Storage, config Config) (*FileStorage, error) {
 	fileStorage := &FileStorage{
 		storage: storage,
 		config:  config,
@@ -122,13 +135,13 @@ func New(storage Storage, config Config) (*FileStorage, error) {
 			}
 
 			for _, counter := range backupData.Counters {
-				if err = storage.AddCounter(counter.Name, counter.Value); err != nil {
+				if err = storage.AddCounter(ctx, counter.Name, counter.Value); err != nil {
 					return nil, fmt.Errorf("cannot initialize counter data from file: %s", err)
 				}
 			}
 
 			for _, gauge := range backupData.Gauges {
-				if err = storage.AddGauge(gauge.Name, gauge.Value); err != nil {
+				if err = storage.AddGauge(ctx, gauge.Name, gauge.Value); err != nil {
 					return nil, fmt.Errorf("cannot initialize gauge data from file: %s", err)
 				}
 			}
@@ -142,7 +155,7 @@ func New(storage Storage, config Config) (*FileStorage, error) {
 			for {
 				time.Sleep(time.Duration(config.StoreInterval) * time.Second)
 
-				if err := fileStorage.BackupData(); err != nil {
+				if err := fileStorage.BackupData(ctx); err != nil {
 					logger.Log.Error("error has occurred during backup data", zap.Error(err))
 					continue
 				}
@@ -153,6 +166,6 @@ func New(storage Storage, config Config) (*FileStorage, error) {
 	return fileStorage, nil
 }
 
-func (fs FileStorage) BackupData() error {
-	return backupData(fs.storage, fs.config.FileStoragePath)
+func (fs FileStorage) BackupData(ctx context.Context) error {
+	return backupData(ctx, fs.storage, fs.config.FileStoragePath)
 }

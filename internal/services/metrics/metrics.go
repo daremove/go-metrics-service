@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
@@ -13,14 +15,14 @@ type Metrics struct {
 }
 
 type Storage interface {
-	GetGaugeMetric(key string) (float64, bool)
-	GetGaugeMetrics() []storage.GaugeMetric
+	GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error)
+	GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error)
 
-	GetCounterMetric(key string) (int64, bool)
-	GetCounterMetrics() []storage.CounterMetric
+	GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error)
+	GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error)
 
-	AddGauge(key string, value float64) error
-	AddCounter(key string, value int64) error
+	AddGauge(ctx context.Context, key string, value float64) error
+	AddCounter(ctx context.Context, key string, value int64) error
 }
 
 func New(storage Storage) *Metrics {
@@ -29,7 +31,7 @@ func New(storage Storage) *Metrics {
 	}
 }
 
-func (m *Metrics) Save(parameters services.MetricSaveParameters) error {
+func (m *Metrics) Save(ctx context.Context, parameters services.MetricSaveParameters) error {
 	switch parameters.MetricType {
 	case "gauge":
 		v, err := strconv.ParseFloat(parameters.MetricValue, 64)
@@ -38,7 +40,7 @@ func (m *Metrics) Save(parameters services.MetricSaveParameters) error {
 			return err
 		}
 
-		if err := m.storage.AddGauge(parameters.MetricName, v); err != nil {
+		if err := m.storage.AddGauge(ctx, parameters.MetricName, v); err != nil {
 			return err
 		}
 	case "counter":
@@ -48,7 +50,7 @@ func (m *Metrics) Save(parameters services.MetricSaveParameters) error {
 			return err
 		}
 
-		if err := m.storage.AddCounter(parameters.MetricName, v); err != nil {
+		if err := m.storage.AddCounter(ctx, parameters.MetricName, v); err != nil {
 			return err
 		}
 	default:
@@ -58,14 +60,14 @@ func (m *Metrics) Save(parameters services.MetricSaveParameters) error {
 	return nil
 }
 
-func (m *Metrics) SaveModel(parameters models.Metrics) error {
+func (m *Metrics) SaveModel(ctx context.Context, parameters models.Metrics) error {
 	switch parameters.MType {
 	case "gauge":
-		if err := m.storage.AddGauge(parameters.ID, *parameters.Value); err != nil {
+		if err := m.storage.AddGauge(ctx, parameters.ID, *parameters.Value); err != nil {
 			return err
 		}
 	case "counter":
-		if err := m.storage.AddCounter(parameters.ID, *parameters.Delta); err != nil {
+		if err := m.storage.AddCounter(ctx, parameters.ID, *parameters.Delta); err != nil {
 			return err
 		}
 	default:
@@ -75,56 +77,100 @@ func (m *Metrics) SaveModel(parameters models.Metrics) error {
 	return nil
 }
 
-func (m *Metrics) Get(parameters services.MetricGetParameters) (string, bool) {
+func (m *Metrics) Get(ctx context.Context, parameters services.MetricGetParameters) (string, error) {
 	switch parameters.MetricType {
 	case "gauge":
-		value, ok := m.storage.GetGaugeMetric(parameters.MetricName)
+		value, err := m.storage.GetGaugeMetric(ctx, parameters.MetricName)
 
-		return fmt.Sprintf("%g", value), ok
+		if err != nil {
+			if errors.Is(err, storage.ErrDataNotFound) {
+				return "", services.ErrMetricNotFound
+			}
+
+			return "", err
+		}
+
+		return fmt.Sprintf("%g", value.Value), nil
 	case "counter":
-		value, ok := m.storage.GetCounterMetric(parameters.MetricName)
+		value, err := m.storage.GetCounterMetric(ctx, parameters.MetricName)
 
-		return fmt.Sprintf("%v", value), ok
+		if err != nil {
+			if errors.Is(err, storage.ErrDataNotFound) {
+				return "", services.ErrMetricNotFound
+			}
+
+			return "", err
+		}
+
+		return fmt.Sprintf("%v", value.Value), err
 	default:
-		return "", false
+		return "", services.ErrMetricNotFound
 	}
 }
 
-func (m *Metrics) GetModel(parameters models.Metrics) (models.Metrics, bool) {
+func (m *Metrics) GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error) {
 	switch parameters.MType {
 	case "gauge":
-		value, ok := m.storage.GetGaugeMetric(parameters.ID)
+		value, err := m.storage.GetGaugeMetric(ctx, parameters.ID)
+
+		if err != nil {
+			if errors.Is(err, storage.ErrDataNotFound) {
+				return models.Metrics{}, services.ErrMetricNotFound
+			}
+
+			return models.Metrics{}, err
+		}
 
 		return models.Metrics{
 			ID:    parameters.ID,
 			MType: parameters.MType,
-			Value: &value,
-		}, ok
+			Value: &value.Value,
+		}, nil
 	case "counter":
-		value, ok := m.storage.GetCounterMetric(parameters.ID)
+		value, err := m.storage.GetCounterMetric(ctx, parameters.ID)
+
+		if err != nil {
+			if errors.Is(err, storage.ErrDataNotFound) {
+				return models.Metrics{}, services.ErrMetricNotFound
+			}
+
+			return models.Metrics{}, err
+		}
 
 		return models.Metrics{
 			ID:    parameters.ID,
 			MType: parameters.MType,
-			Delta: &value,
-		}, ok
+			Delta: &value.Value,
+		}, nil
 	default:
-		return models.Metrics{}, false
+		return models.Metrics{}, services.ErrMetricNotFound
 	}
 }
 
-func (m *Metrics) GetAll() []services.MetricEntry {
+func (m *Metrics) GetAll(ctx context.Context) ([]services.MetricEntry, error) {
 	var result []services.MetricEntry
 
-	for _, item := range m.storage.GetGaugeMetrics() {
+	gaugeMetrics, err := m.storage.GetGaugeMetrics(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	counterMetrics, err := m.storage.GetCounterMetrics(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range gaugeMetrics {
 		result = append(result, services.MetricEntry{Name: item.Name, Value: fmt.Sprintf("%g", item.Value)})
 	}
 
-	for _, item := range m.storage.GetCounterMetrics() {
+	for _, item := range counterMetrics {
 		result = append(result, services.MetricEntry{Name: item.Name, Value: fmt.Sprintf("%v", item.Value)})
 	}
 
-	return result
+	return result, nil
 }
 
 func IsCounterMetricType(metricName string) bool {

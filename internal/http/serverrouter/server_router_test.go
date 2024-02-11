@@ -3,6 +3,7 @@ package serverrouter
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
@@ -113,39 +114,47 @@ type metricsServiceMock struct {
 	modelData map[string]models.Metrics
 }
 
-func (m metricsServiceMock) Save(parameters services.MetricSaveParameters) error {
+func (m metricsServiceMock) Save(ctx context.Context, parameters services.MetricSaveParameters) error {
 	return nil
 }
 
-func (m metricsServiceMock) SaveModel(parameters models.Metrics) error {
+func (m metricsServiceMock) SaveModel(ctx context.Context, parameters models.Metrics) error {
 	return nil
 }
 
-func (m metricsServiceMock) Get(parameters services.MetricGetParameters) (string, bool) {
+func (m metricsServiceMock) Get(ctx context.Context, parameters services.MetricGetParameters) (string, error) {
 	value, ok := m.data[parameters.MetricName]
 
-	return value, ok
+	if !ok {
+		return "", services.ErrMetricNotFound
+	}
+
+	return value, nil
 }
 
-func (m metricsServiceMock) GetModel(parameters models.Metrics) (models.Metrics, bool) {
+func (m metricsServiceMock) GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error) {
 	value, ok := m.modelData[parameters.ID]
 
-	return value, ok
+	if !ok {
+		return models.Metrics{}, services.ErrMetricNotFound
+	}
+
+	return value, nil
 }
 
-func (m metricsServiceMock) GetAll() []services.MetricEntry {
+func (m metricsServiceMock) GetAll(ctx context.Context) ([]services.MetricEntry, error) {
 	var result []services.MetricEntry
 
 	for key, value := range m.data {
 		result = append(result, services.MetricEntry{Name: key, Value: value})
 	}
 
-	return result
+	return result, nil
 }
 
 type healthCheckServiceMock struct{}
 
-func (hc healthCheckServiceMock) CheckStorageConnection() error {
+func (hc healthCheckServiceMock) CheckStorageConnection(ctx context.Context) error {
 	return nil
 }
 
@@ -155,7 +164,7 @@ func TestServerRouter(t *testing.T) {
 			data: map[string]string{
 				"test": "1.1",
 			},
-		}, healthCheckServiceMock{}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -256,7 +265,7 @@ func TestServerRouterJson(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"gauge_test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, healthCheckServiceMock{}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -331,7 +340,7 @@ func TestServerRouterGzip(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, healthCheckServiceMock{}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(context.TODO()),
 	)
 	defer testServer.Close()
 
