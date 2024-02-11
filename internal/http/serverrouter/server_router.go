@@ -22,8 +22,9 @@ import (
 )
 
 type ServerRouter struct {
-	metricsService MetricsService
-	endpoint       string
+	metricsService     MetricsService
+	healthCheckService HealthCheckService
+	endpoint           string
 }
 
 type MetricsService interface {
@@ -38,8 +39,12 @@ type MetricsService interface {
 	GetAll() []services.MetricEntry
 }
 
-func New(metricsService MetricsService, endpoint string) *ServerRouter {
-	return &ServerRouter{metricsService, endpoint}
+type HealthCheckService interface {
+	CheckStorageConnection() error
+}
+
+func New(metricsService MetricsService, healthCheckService HealthCheckService, endpoint string) *ServerRouter {
+	return &ServerRouter{metricsService, healthCheckService, endpoint}
 }
 
 func (router *ServerRouter) Get() chi.Router {
@@ -74,6 +79,10 @@ func (router *ServerRouter) Get() chi.Router {
 			r.Get("/{metricType}/{metricName}", getMetricValueHandler(router.metricsService))
 
 			r.Post("/", getMetricValueWithJSONHandler(router.metricsService))
+		})
+
+		r.Route("/ping", func(r chi.Router) {
+			r.Get("/", pingHandler(router.healthCheckService))
 		})
 	})
 
@@ -127,6 +136,19 @@ func updateMetricWithJSONHandler(metricsService MetricsService) http.HandlerFunc
 			return
 		}
 	}
+}
+
+func pingHandler(healthCheckService HealthCheckService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := healthCheckService.CheckStorageConnection(); err != nil {
+			logger.Log.Debug("error check storage connection in health check service", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}
+
 }
 
 func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {

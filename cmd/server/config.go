@@ -12,6 +12,8 @@ type Config struct {
 	storeInterval   int
 	fileStoragePath string
 	restore         bool
+	dsn             string
+	logLevel        string
 }
 
 func NewConfig() Config {
@@ -20,12 +22,15 @@ func NewConfig() Config {
 		storeInterval   int
 		fileStoragePath string
 		restore         bool
+		dsn             string
+		logLevel        string
 	)
 
 	flag.StringVar(&endpoint, "a", "localhost:8080", "address and port to run server")
 	flag.IntVar(&storeInterval, "i", 300, "interval of saving data to disk")
 	flag.StringVar(&fileStoragePath, "f", "/tmp/metrics-db.json", "path of storage file")
 	flag.BoolVar(&restore, "r", true, "should server restore data from storage file")
+	flag.StringVar(&dsn, "d", "", "data source name for database connection")
 	flag.Parse()
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -56,5 +61,15 @@ func NewConfig() Config {
 		restore = v
 	}
 
-	return Config{endpoint, storeInterval, fileStoragePath, restore}
+	if d := os.Getenv("DATABASE_DSN"); d != "" {
+		dsn = d
+	}
+
+	if l := os.Getenv("LOG_LEVEL"); l != "" {
+		logLevel = l
+	} else {
+		logLevel = "error"
+	}
+
+	return Config{endpoint, storeInterval, fileStoragePath, restore, dsn, logLevel}
 }

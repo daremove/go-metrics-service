@@ -143,13 +143,19 @@ func (m metricsServiceMock) GetAll() []services.MetricEntry {
 	return result
 }
 
+type healthCheckServiceMock struct{}
+
+func (hc healthCheckServiceMock) CheckStorageConnection() error {
+	return nil
+}
+
 func TestServerRouter(t *testing.T) {
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			data: map[string]string{
 				"test": "1.1",
 			},
-		}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(),
 	)
 	defer testServer.Close()
 
@@ -250,7 +256,7 @@ func TestServerRouterJson(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"gauge_test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(),
 	)
 	defer testServer.Close()
 
@@ -325,7 +331,7 @@ func TestServerRouterGzip(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(),
 	)
 	defer testServer.Close()
 
