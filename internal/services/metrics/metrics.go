@@ -21,8 +21,10 @@ type Storage interface {
 	GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error)
 	GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error)
 
-	AddGauge(ctx context.Context, key string, value float64) error
-	AddCounter(ctx context.Context, key string, value int64) error
+	AddGaugeMetric(ctx context.Context, key string, value float64) error
+	AddCounterMetric(ctx context.Context, key string, value int64) error
+
+	AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error
 }
 
 func New(storage Storage) *Metrics {
@@ -40,7 +42,7 @@ func (m *Metrics) Save(ctx context.Context, parameters services.MetricSaveParame
 			return err
 		}
 
-		if err := m.storage.AddGauge(ctx, parameters.MetricName, v); err != nil {
+		if err := m.storage.AddGaugeMetric(ctx, parameters.MetricName, v); err != nil {
 			return err
 		}
 	case "counter":
@@ -50,7 +52,7 @@ func (m *Metrics) Save(ctx context.Context, parameters services.MetricSaveParame
 			return err
 		}
 
-		if err := m.storage.AddCounter(ctx, parameters.MetricName, v); err != nil {
+		if err := m.storage.AddCounterMetric(ctx, parameters.MetricName, v); err != nil {
 			return err
 		}
 	default:
@@ -63,15 +65,37 @@ func (m *Metrics) Save(ctx context.Context, parameters services.MetricSaveParame
 func (m *Metrics) SaveModel(ctx context.Context, parameters models.Metrics) error {
 	switch parameters.MType {
 	case "gauge":
-		if err := m.storage.AddGauge(ctx, parameters.ID, *parameters.Value); err != nil {
+		if err := m.storage.AddGaugeMetric(ctx, parameters.ID, *parameters.Value); err != nil {
 			return err
 		}
 	case "counter":
-		if err := m.storage.AddCounter(ctx, parameters.ID, *parameters.Delta); err != nil {
+		if err := m.storage.AddCounterMetric(ctx, parameters.ID, *parameters.Delta); err != nil {
 			return err
 		}
 	default:
 		return fmt.Errorf("metrict type %s isn't defined", parameters.MType)
+	}
+
+	return nil
+}
+
+func (m *Metrics) SaveModels(ctx context.Context, parameters []models.Metrics) error {
+	var gaugeMetrics []storage.GaugeMetric
+	var counterMetrics []storage.CounterMetric
+
+	for _, parameter := range parameters {
+		switch parameter.MType {
+		case "gauge":
+			gaugeMetrics = append(gaugeMetrics, storage.GaugeMetric{Name: parameter.ID, Value: *parameter.Value})
+		case "counter":
+			counterMetrics = append(counterMetrics, storage.CounterMetric{Name: parameter.ID, Value: *parameter.Delta})
+		default:
+			return fmt.Errorf("metrict type %s isn't defined", parameter.MType)
+		}
+	}
+
+	if err := m.storage.AddMetrics(ctx, gaugeMetrics, counterMetrics); err != nil {
+		return err
 	}
 
 	return nil

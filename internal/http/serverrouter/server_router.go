@@ -34,6 +34,8 @@ type MetricsService interface {
 
 	SaveModel(ctx context.Context, parameters models.Metrics) error
 
+	SaveModels(ctx context.Context, parameters []models.Metrics) error
+
 	Get(ctx context.Context, parameters services.MetricGetParameters) (string, error)
 
 	GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error)
@@ -77,6 +79,10 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 			r.Post("/", updateMetricWithJSONHandler(ctx, router.metricsService))
 		})
 
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", updateMetricsHandler(ctx, router.metricsService))
+		})
+
 		r.Route("/value", func(r chi.Router) {
 			r.Get("/{metricType}/{metricName}", getMetricValueHandler(ctx, router.metricsService))
 
@@ -93,6 +99,16 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 
 func (router *ServerRouter) Run(ctx context.Context) {
 	log.Fatal(http.ListenAndServe(router.endpoint, router.Get(ctx)))
+}
+
+func handleJSONError(w http.ResponseWriter, err error) {
+	switch err.Error() {
+	case utils.UnsupportedContentTypeCode:
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+	default:
+		logger.Log.Debug("cannot parse json data from request", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func updateMetricHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
@@ -115,14 +131,7 @@ func updateMetricWithJSONHandler(ctx context.Context, metricsService MetricsServ
 		data, err := utils.DecodeJSONRequest[models.Metrics](r)
 
 		if err != nil {
-			switch err.Error() {
-			case utils.UnsupportedContentTypeCode:
-				w.WriteHeader(http.StatusUnsupportedMediaType)
-			default:
-				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
+			handleJSONError(w, err)
 			return
 		}
 
@@ -133,6 +142,29 @@ func updateMetricWithJSONHandler(ctx context.Context, metricsService MetricsServ
 		}
 
 		if err := utils.EncodeJSONRequest[models.Metrics](w, data); err != nil {
+			logger.Log.Debug("error encoding response", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+}
+
+func updateMetricsHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := utils.DecodeJSONRequest[[]models.Metrics](r)
+
+		if err != nil {
+			handleJSONError(w, err)
+			return
+		}
+
+		if err := metricsService.SaveModels(ctx, data); err != nil {
+			logger.Log.Debug("error saving data in metrics service", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := utils.EncodeJSONRequest[[]models.Metrics](w, data); err != nil {
 			logger.Log.Debug("error encoding response", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -182,14 +214,7 @@ func getMetricValueWithJSONHandler(ctx context.Context, metricsService MetricsSe
 		data, err := utils.DecodeJSONRequest[models.Metrics](r)
 
 		if err != nil {
-			switch err.Error() {
-			case utils.UnsupportedContentTypeCode:
-				w.WriteHeader(http.StatusUnsupportedMediaType)
-			default:
-				logger.Log.Debug("error parse json data from request", zap.Error(err))
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
+			handleJSONError(w, err)
 			return
 		}
 
@@ -263,8 +288,8 @@ func SendMetricData(parameters SendMetricDataParameters) error {
 	return nil
 }
 
-func SendMetricModelData(url string, parameters models.Metrics) error {
-	body, err := json.Marshal(parameters)
+func SendMetricModelData(url string, data []models.Metrics) error {
+	body, err := json.Marshal(data)
 
 	if err != nil {
 		return fmt.Errorf("failed to marshal data: %w", err)
@@ -287,7 +312,7 @@ func SendMetricModelData(url string, parameters models.Metrics) error {
 
 	body = buf.Bytes()
 	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/update", url), bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/updates", url), bytes.NewBuffer(body))
 
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

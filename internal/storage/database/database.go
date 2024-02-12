@@ -10,6 +10,23 @@ import (
 	"time"
 )
 
+const (
+	InsertGaugeMetricQuery = `
+		INSERT INTO
+			gauge_metrics (id, value)
+		VALUES ($1, $2)
+		ON CONFLICT (id) DO UPDATE
+		SET value = EXCLUDED.value
+	`
+	InsertCounterMetricQuery = `
+		INSERT INTO
+			counter_metrics (id, value)
+		VALUES ($1, $2)
+		ON CONFLICT (id) DO UPDATE
+		SET value = counter_metrics.value + EXCLUDED.value
+	`
+)
+
 type Database struct {
 	db *sql.DB
 }
@@ -117,32 +134,56 @@ func (d *Database) GetCounterMetrics(ctx context.Context) ([]storage.CounterMetr
 	return result, nil
 }
 
-func (d *Database) AddGauge(ctx context.Context, key string, value float64) error {
-	if _, err := d.db.ExecContext(ctx, `
-		INSERT INTO
-			gauge_metrics (id, value)
-		VALUES ($1, $2)
-		ON CONFLICT (id) DO UPDATE
-		SET value = EXCLUDED.value
-	`, key, value); err != nil {
+func (d *Database) AddGaugeMetric(ctx context.Context, key string, value float64) error {
+	if _, err := d.db.ExecContext(ctx, InsertGaugeMetricQuery, key, value); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (d *Database) AddCounter(ctx context.Context, key string, value int64) error {
-	if _, err := d.db.ExecContext(ctx, `
-		INSERT INTO
-			counter_metrics (id, value)
-		VALUES ($1, $2)
-		ON CONFLICT (id) DO UPDATE
-		SET value = EXCLUDED.value
-	`, key, value); err != nil {
+func (d *Database) AddCounterMetric(ctx context.Context, key string, value int64) error {
+	if _, err := d.db.ExecContext(ctx, InsertCounterMetricQuery, key, value); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (d *Database) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error {
+	tx, err := d.db.BeginTx(ctx, nil)
+
+	if err != nil {
+		return err
+	}
+
+	defer tx.Rollback()
+
+	insertGaugeMetricStmt, err := tx.PrepareContext(ctx, InsertGaugeMetricQuery)
+
+	if err != nil {
+		return err
+	}
+
+	insertCounterMetricStmt, err := tx.PrepareContext(ctx, InsertCounterMetricQuery)
+
+	if err != nil {
+		return err
+	}
+
+	for _, gaugeMetric := range gaugeMetrics {
+		if _, err := insertGaugeMetricStmt.ExecContext(ctx, gaugeMetric.Name, gaugeMetric.Value); err != nil {
+			return err
+		}
+	}
+
+	for _, counterMetric := range counterMetrics {
+		if _, err := insertCounterMetricStmt.ExecContext(ctx, counterMetric.Name, counterMetric.Value); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func New(ctx context.Context, dsn string) (*Database, error) {
@@ -155,36 +196,6 @@ func New(ctx context.Context, dsn string) (*Database, error) {
 	if err := checkConnection(ctx, db); err != nil {
 		return nil, err
 	}
-
-	//migrationsPath, err := utils.GetRootPath("internal/storage/database/migrations")
-
-	//if err != nil {
-	//	return nil, err
-	//}
-
-	//if _, err := os.Stat(migrationsPath); errors.Is(err, os.ErrNotExist) {
-	//	return &Database{db}, nil
-	//}
-	//
-	//driver, err := postgres.WithInstance(db, &postgres.Config{})
-
-	//if err != nil {
-	//	return nil, err
-	//}
-
-	//m, err := migrate.NewWithDatabaseInstance(
-	//	"file:"+migrationsPath,
-	//	"postgres",
-	//	driver,
-	//)
-	//
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//if err := m.Run(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-	//	return nil, err
-	//}
 
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS gauge_metrics (

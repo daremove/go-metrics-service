@@ -74,14 +74,16 @@ func TestSendMetricModelData(t *testing.T) {
 		{
 			testName: "Should send request with correct body",
 			testServer: createServer(func(r *http.Request) {
-				data, err := utils.DecodeJSONRequest[models.Metrics](r)
+				data, err := utils.DecodeJSONRequest[[]models.Metrics](r)
 
 				require.NoError(t, err)
-				assert.Equal(t, data, models.Metrics{
-					ID:    "metricName",
-					MType: "metricType",
-					Delta: &deltaMock,
-					Value: &valueMock,
+				assert.Equal(t, data, []models.Metrics{
+					{
+						ID:    "metricName",
+						MType: "metricType",
+						Delta: &deltaMock,
+						Value: &valueMock,
+					},
 				})
 			}),
 		},
@@ -97,11 +99,13 @@ func TestSendMetricModelData(t *testing.T) {
 		t.Run(tc.testName, func(t *testing.T) {
 			defer tc.testServer.Close()
 
-			err := SendMetricModelData(tc.testServer.URL, models.Metrics{
-				ID:    "metricName",
-				MType: "metricType",
-				Delta: &deltaMock,
-				Value: &valueMock,
+			err := SendMetricModelData(tc.testServer.URL, []models.Metrics{
+				{
+					ID:    "metricName",
+					MType: "metricType",
+					Delta: &deltaMock,
+					Value: &valueMock,
+				},
 			})
 
 			assert.NoError(t, err)
@@ -119,6 +123,10 @@ func (m metricsServiceMock) Save(ctx context.Context, parameters services.Metric
 }
 
 func (m metricsServiceMock) SaveModel(ctx context.Context, parameters models.Metrics) error {
+	return nil
+}
+
+func (m metricsServiceMock) SaveModels(ctx context.Context, parameters []models.Metrics) error {
 	return nil
 }
 

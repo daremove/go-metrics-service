@@ -50,14 +50,30 @@ func (s *MemStorage) GetCounterMetrics(ctx context.Context) ([]storage.CounterMe
 	return data, nil
 }
 
-func (s *MemStorage) AddGauge(ctx context.Context, key string, value float64) error {
+func (s *MemStorage) AddGaugeMetric(ctx context.Context, key string, value float64) error {
 	s.gauge[key] = value
 
 	return nil
 }
 
-func (s *MemStorage) AddCounter(ctx context.Context, key string, value int64) error {
+func (s *MemStorage) AddCounterMetric(ctx context.Context, key string, value int64) error {
 	s.counter[key] += value
+
+	return nil
+}
+
+func (s *MemStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error {
+	for _, gaugeMetric := range gaugeMetrics {
+		if err := s.AddGaugeMetric(ctx, gaugeMetric.Name, gaugeMetric.Value); err != nil {
+			return err
+		}
+	}
+
+	for _, counterMetric := range counterMetrics {
+		if err := s.AddCounterMetric(ctx, counterMetric.Name, counterMetric.Value); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

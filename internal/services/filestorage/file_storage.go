@@ -29,8 +29,10 @@ type Storage interface {
 	GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error)
 	GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error)
 
-	AddGauge(ctx context.Context, key string, value float64) error
-	AddCounter(ctx context.Context, key string, value int64) error
+	AddGaugeMetric(ctx context.Context, key string, value float64) error
+	AddCounterMetric(ctx context.Context, key string, value int64) error
+
+	AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error
 }
 
 type Config struct {
@@ -39,8 +41,8 @@ type Config struct {
 	Restore         bool
 }
 
-func (fs FileStorage) AddGauge(ctx context.Context, key string, value float64) error {
-	if err := fs.storage.AddGauge(ctx, key, value); err != nil {
+func (fs FileStorage) AddGaugeMetric(ctx context.Context, key string, value float64) error {
+	if err := fs.storage.AddGaugeMetric(ctx, key, value); err != nil {
 		return err
 	}
 
@@ -55,8 +57,24 @@ func (fs FileStorage) AddGauge(ctx context.Context, key string, value float64) e
 	return nil
 }
 
-func (fs FileStorage) AddCounter(ctx context.Context, key string, value int64) error {
-	if err := fs.storage.AddCounter(ctx, key, value); err != nil {
+func (fs FileStorage) AddCounterMetric(ctx context.Context, key string, value int64) error {
+	if err := fs.storage.AddCounterMetric(ctx, key, value); err != nil {
+		return err
+	}
+
+	if fs.config.StoreInterval > 0 {
+		return nil
+	}
+
+	if err := backupData(ctx, fs.storage, fs.config.FileStoragePath); err != nil {
+		return fmt.Errorf("error has occurred during backup data: %s", err)
+	}
+
+	return nil
+}
+
+func (fs FileStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error {
+	if err := fs.storage.AddMetrics(ctx, gaugeMetrics, counterMetrics); err != nil {
 		return err
 	}
 
@@ -135,13 +153,13 @@ func New(ctx context.Context, storage Storage, config Config) (*FileStorage, err
 			}
 
 			for _, counter := range backupData.Counters {
-				if err = storage.AddCounter(ctx, counter.Name, counter.Value); err != nil {
+				if err = storage.AddCounterMetric(ctx, counter.Name, counter.Value); err != nil {
 					return nil, fmt.Errorf("cannot initialize counter data from file: %s", err)
 				}
 			}
 
 			for _, gauge := range backupData.Gauges {
-				if err = storage.AddGauge(ctx, gauge.Name, gauge.Value); err != nil {
+				if err = storage.AddGaugeMetric(ctx, gauge.Name, gauge.Value); err != nil {
 					return nil, fmt.Errorf("cannot initialize gauge data from file: %s", err)
 				}
 			}

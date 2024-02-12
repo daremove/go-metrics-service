@@ -41,8 +41,10 @@ func main() {
 				time.Sleep(time.Duration(config.reportInterval) * time.Second)
 
 				mutex.Lock()
+				var payload []models.Metrics
+
 				for metricName, metricValue := range data {
-					payload := models.Metrics{
+					payloadItem := models.Metrics{
 						ID:    metricName,
 						MType: "gauge",
 					}
@@ -50,16 +52,20 @@ func main() {
 					if metrics.IsCounterMetricType(metricName) {
 						value := int64(metricValue)
 
-						payload.MType = "counter"
-						payload.Delta = &value
+						payloadItem.MType = "counter"
+						payloadItem.Delta = &value
 					} else {
-						payload.Value = &metricValue
+						value := metricValue
+						payloadItem.Value = &value
 					}
 
-					if err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload); err != nil {
-						log.Printf("failed to send metric data: %s", err)
-					}
+					payload = append(payload, payloadItem)
 				}
+
+				if err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload); err != nil {
+					log.Printf("failed to send metric data: %s", err)
+				}
+
 				mutex.Unlock()
 			}
 		},
