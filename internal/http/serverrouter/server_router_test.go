@@ -268,6 +268,11 @@ func TestServerRouterJson(t *testing.T) {
 	counterDataMock, _ := json.Marshal(models.Metrics{ID: "counter_test", MType: "counter", Delta: &deltaMock})
 	gaugeDataMock, _ := json.Marshal(models.Metrics{ID: "gauge_test", MType: "gauge", Value: &valueMock})
 
+	modelDataMock, _ := json.Marshal([]models.Metrics{
+		{ID: "counter_test", MType: "counter", Delta: &deltaMock},
+		{ID: "gauge_test", MType: "gauge", Value: &valueMock},
+	})
+
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			modelData: map[string]models.Metrics{
@@ -302,6 +307,17 @@ func TestServerRouterJson(t *testing.T) {
 				"Content-Type": "application/json",
 			},
 			body: bytes.NewBuffer(counterDataMock),
+		},
+		{
+			testName:        "Should save correctly model data",
+			methodName:      http.MethodPost,
+			targetURL:       "/updates",
+			expectedCode:    http.StatusOK,
+			expectedMessage: "[{\"id\":\"counter_test\",\"type\":\"counter\",\"delta\":1},{\"id\":\"gauge_test\",\"type\":\"gauge\",\"value\":2.5}]",
+			headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+			body: bytes.NewBuffer(modelDataMock),
 		},
 		{
 			testName:        "Should return found data by using model",

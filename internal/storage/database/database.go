@@ -199,13 +199,13 @@ func New(ctx context.Context, dsn string) (*Database, error) {
 
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS gauge_metrics (
-		    id      VARCHAR PRIMARY KEY,
-    		value   DOUBLE PRECISION NOT NULL
+		    id      varchar PRIMARY KEY,
+    		value   double precision NOT NULL
 		);
 
 		CREATE TABLE IF NOT EXISTS counter_metrics (
-			id      VARCHAR PRIMARY KEY,
-			value   INTEGER NOT NULL
+			id      varchar PRIMARY KEY,
+			value   bigserial NOT NULL
 		);
 	`); err != nil {
 		return nil, err

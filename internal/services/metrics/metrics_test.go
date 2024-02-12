@@ -153,6 +153,65 @@ func TestMetrics_SaveModel(t *testing.T) {
 	}
 }
 
+func TestMetrics_SaveModels(t *testing.T) {
+	var deltaMock int64 = 100
+	var valueMock = 1.1
+
+	storeMock := memstorage.NewWithPrefilledData(map[string]float64{}, map[string]int64{})
+	metricsService := New(storeMock)
+
+	testCases := []struct {
+		testName       string
+		saveParameters []models.Metrics
+		testCase       func(t *testing.T, err error)
+	}{
+		{
+			testName: "Should return error if metricType isn't defined",
+			saveParameters: []models.Metrics{
+				{
+					MType: "incorrect",
+				},
+			},
+			testCase: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+		},
+		{
+			testName: "Should save in storage gauge and counter metric types",
+			saveParameters: []models.Metrics{
+				{
+					ID:    "gaugeMetricName",
+					MType: "gauge",
+					Value: &valueMock,
+				},
+				{
+					ID:    "counterMetricName",
+					MType: "counter",
+					Delta: &deltaMock,
+				},
+			},
+			testCase: func(t *testing.T, err error) {
+				gaugeValue, _ := storeMock.GetGaugeMetric(context.TODO(), "gaugeMetricName")
+				counterValue, _ := storeMock.GetCounterMetric(context.TODO(), "counterMetricName")
+
+				require.NoError(t, err)
+				assert.Equal(t, 1.1, gaugeValue.Value)
+				assert.Equal(t, "gaugeMetricName", gaugeValue.Name)
+				assert.Equal(t, int64(100), counterValue.Value)
+				assert.Equal(t, "counterMetricName", counterValue.Name)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			err := metricsService.SaveModels(context.TODO(), tc.saveParameters)
+
+			tc.testCase(t, err)
+		})
+	}
+}
+
 func TestMetrics_GetAll(t *testing.T) {
 	metricsService := New(memstorage.NewWithPrefilledData(map[string]float64{"first": 1.11234}, map[string]int64{"second": 1}))
 

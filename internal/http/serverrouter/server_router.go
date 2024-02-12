@@ -136,13 +136,13 @@ func updateMetricWithJSONHandler(ctx context.Context, metricsService MetricsServ
 		}
 
 		if err := metricsService.SaveModel(ctx, data); err != nil {
-			logger.Log.Debug("error saving data in metrics service", zap.Error(err))
+			logger.Log.Error("error saving data in metrics service", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if err := utils.EncodeJSONRequest[models.Metrics](w, data); err != nil {
-			logger.Log.Debug("error encoding response", zap.Error(err))
+			logger.Log.Error("error encoding response", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -159,13 +159,13 @@ func updateMetricsHandler(ctx context.Context, metricsService MetricsService) ht
 		}
 
 		if err := metricsService.SaveModels(ctx, data); err != nil {
-			logger.Log.Debug("error saving data in metrics service", zap.Error(err))
+			logger.Log.Error("error saving data in metrics service", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if err := utils.EncodeJSONRequest[[]models.Metrics](w, data); err != nil {
-			logger.Log.Debug("error encoding response", zap.Error(err))
+			logger.Log.Error("error encoding response", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -175,7 +175,7 @@ func updateMetricsHandler(ctx context.Context, metricsService MetricsService) ht
 func pingHandler(ctx context.Context, healthCheckService HealthCheckService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := healthCheckService.CheckStorageConnection(ctx); err != nil {
-			logger.Log.Debug("error check storage connection in health check service", zap.Error(err))
+			logger.Log.Error("error check storage connection in health check service", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -198,7 +198,7 @@ func getMetricValueHandler(ctx context.Context, metricsService MetricsService) h
 				return
 			}
 
-			logger.Log.Debug("error get metric data", zap.Error(err))
+			logger.Log.Error("error get metric data", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -226,13 +226,13 @@ func getMetricValueWithJSONHandler(ctx context.Context, metricsService MetricsSe
 				return
 			}
 
-			logger.Log.Debug("error get model metric data", zap.Error(err))
+			logger.Log.Error("error get model metric data", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if err := utils.EncodeJSONRequest[models.Metrics](w, value); err != nil {
-			logger.Log.Debug("error encoding response", zap.Error(err))
+			logger.Log.Error("error encoding response", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -246,7 +246,7 @@ func getAllMetricsHandler(ctx context.Context, metricsService MetricsService) ht
 		metricData, err := metricsService.GetAll(ctx)
 
 		if err != nil {
-			logger.Log.Debug("error get all metric data", zap.Error(err))
+			logger.Log.Error("error get all metric data", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
