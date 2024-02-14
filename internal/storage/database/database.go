@@ -6,6 +6,7 @@ import (
 	"github.com/daremove/go-metrics-service/internal/storage"
 	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 )
 
@@ -27,10 +28,10 @@ const (
 )
 
 type Database struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
-func checkConnection(ctx context.Context, db *pgx.Conn) error {
+func checkConnection(ctx context.Context, db *pgxpool.Pool) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
 	defer cancel()
 
@@ -174,7 +175,7 @@ func (d *Database) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeM
 }
 
 func New(ctx context.Context, dsn string) (*Database, error) {
-	db, err := pgx.Connect(ctx, dsn)
+	db, err := pgxpool.New(ctx, dsn)
 
 	if err != nil {
 		return nil, err
