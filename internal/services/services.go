@@ -1,5 +1,11 @@
 package services
 
+import "errors"
+
+var (
+	ErrMetricNotFound = errors.New("metric data is not found")
+)
+
 type MetricEntry struct {
 	Name  string
 	Value string

@@ -18,6 +18,7 @@ func main() {
 	var data map[string]float64
 	var mutex sync.Mutex
 	statsService := stats.New()
+	backoff := utils.NewBackoff()
 
 	log.Printf(
 		"Starting read stats data every %v and send it every %v to %s",
@@ -40,9 +41,12 @@ func main() {
 			for {
 				time.Sleep(time.Duration(config.reportInterval) * time.Second)
 
+				backoff.Reset()
 				mutex.Lock()
+				var payload []models.Metrics
+
 				for metricName, metricValue := range data {
-					payload := models.Metrics{
+					payloadItem := models.Metrics{
 						ID:    metricName,
 						MType: "gauge",
 					}
@@ -50,16 +54,31 @@ func main() {
 					if metrics.IsCounterMetricType(metricName) {
 						value := int64(metricValue)
 
-						payload.MType = "counter"
-						payload.Delta = &value
+						payloadItem.MType = "counter"
+						payloadItem.Delta = &value
 					} else {
-						payload.Value = &metricValue
+						value := metricValue
+						payloadItem.Value = &value
 					}
 
-					if err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload); err != nil {
-						log.Printf("failed to send metric data: %s", err)
-					}
+					payload = append(payload, payloadItem)
 				}
+
+				for {
+					if err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload); err != nil {
+						d, ok := backoff.Duration()
+
+						if !ok {
+							log.Printf("failed to send metric data: %s", err)
+							break
+						} else {
+							time.Sleep(d)
+							continue
+						}
+					}
+					break
+				}
+
 				mutex.Unlock()
 			}
 		},

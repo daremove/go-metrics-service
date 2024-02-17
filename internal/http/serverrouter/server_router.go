@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
@@ -22,27 +24,34 @@ import (
 )
 
 type ServerRouter struct {
-	metricsService MetricsService
-	endpoint       string
+	metricsService     MetricsService
+	healthCheckService HealthCheckService
+	endpoint           string
 }
 
 type MetricsService interface {
-	Save(parameters services.MetricSaveParameters) error
+	Save(ctx context.Context, parameters services.MetricSaveParameters) error
 
-	SaveModel(parameters models.Metrics) error
+	SaveModel(ctx context.Context, parameters models.Metrics) error
 
-	Get(parameters services.MetricGetParameters) (string, bool)
+	SaveModels(ctx context.Context, parameters []models.Metrics) error
 
-	GetModel(parameters models.Metrics) (models.Metrics, bool)
+	Get(ctx context.Context, parameters services.MetricGetParameters) (string, error)
 
-	GetAll() []services.MetricEntry
+	GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error)
+
+	GetAll(ctx context.Context) ([]services.MetricEntry, error)
 }
 
-func New(metricsService MetricsService, endpoint string) *ServerRouter {
-	return &ServerRouter{metricsService, endpoint}
+type HealthCheckService interface {
+	CheckStorageConnection(ctx context.Context) error
 }
 
-func (router *ServerRouter) Get() chi.Router {
+func New(metricsService MetricsService, healthCheckService HealthCheckService, endpoint string) *ServerRouter {
+	return &ServerRouter{metricsService, healthCheckService, endpoint}
+}
+
+func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(logger.RequestLogger)
@@ -50,12 +59,12 @@ func (router *ServerRouter) Get() chi.Router {
 	r.Use(gzipm.GzipMiddleware)
 
 	r.Route("/", func(r chi.Router) {
-		r.Get("/", getAllMetricsHandler(router.metricsService))
+		r.Get("/", getAllMetricsHandler(ctx, router.metricsService))
 
 		r.Route("/update", func(r chi.Router) {
 			r.Route("/{metricType}", func(r chi.Router) {
 				r.Route("/{metricName}", func(r chi.Router) {
-					r.Post("/{metricValue}", updateMetricHandler(router.metricsService))
+					r.Post("/{metricValue}", updateMetricHandler(ctx, router.metricsService))
 
 					r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 						http.Error(w, "metricValue wasn't provided", http.StatusBadRequest)
@@ -67,26 +76,44 @@ func (router *ServerRouter) Get() chi.Router {
 				})
 			})
 
-			r.Post("/", updateMetricWithJSONHandler(router.metricsService))
+			r.Post("/", updateMetricWithJSONHandler(ctx, router.metricsService))
+		})
+
+		r.Route("/updates", func(r chi.Router) {
+			r.Post("/", updateMetricsHandler(ctx, router.metricsService))
 		})
 
 		r.Route("/value", func(r chi.Router) {
-			r.Get("/{metricType}/{metricName}", getMetricValueHandler(router.metricsService))
+			r.Get("/{metricType}/{metricName}", getMetricValueHandler(ctx, router.metricsService))
 
-			r.Post("/", getMetricValueWithJSONHandler(router.metricsService))
+			r.Post("/", getMetricValueWithJSONHandler(ctx, router.metricsService))
+		})
+
+		r.Route("/ping", func(r chi.Router) {
+			r.Get("/", pingHandler(ctx, router.healthCheckService))
 		})
 	})
 
 	return r
 }
 
-func (router *ServerRouter) Run() {
-	log.Fatal(http.ListenAndServe(router.endpoint, router.Get()))
+func (router *ServerRouter) Run(ctx context.Context) {
+	log.Fatal(http.ListenAndServe(router.endpoint, router.Get(ctx)))
 }
 
-func updateMetricHandler(metricsService MetricsService) http.HandlerFunc {
+func handleJSONError(w http.ResponseWriter, err error) {
+	switch err.Error() {
+	case utils.UnsupportedContentTypeCode:
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+	default:
+		logger.Log.Debug("cannot parse json data from request", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func updateMetricHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := metricsService.Save(services.MetricSaveParameters{
+		if err := metricsService.Save(ctx, services.MetricSaveParameters{
 			MetricType:  chi.URLParam(r, "metricType"),
 			MetricName:  chi.URLParam(r, "metricName"),
 			MetricValue: chi.URLParam(r, "metricValue"),
@@ -99,45 +126,80 @@ func updateMetricHandler(metricsService MetricsService) http.HandlerFunc {
 	}
 }
 
-func updateMetricWithJSONHandler(metricsService MetricsService) http.HandlerFunc {
+func updateMetricWithJSONHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := utils.DecodeJSONRequest[models.Metrics](r)
 
 		if err != nil {
-			switch err.Error() {
-			case utils.UnsupportedContentTypeCode:
-				w.WriteHeader(http.StatusUnsupportedMediaType)
-			default:
-				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
+			handleJSONError(w, err)
 			return
 		}
 
-		if err := metricsService.SaveModel(data); err != nil {
-			logger.Log.Debug("error saving data in metrics service", zap.Error(err))
+		if err := metricsService.SaveModel(ctx, data); err != nil {
+			logger.Log.Error("error saving data in metrics service", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if err := utils.EncodeJSONRequest[models.Metrics](w, data); err != nil {
-			logger.Log.Debug("error encoding response", zap.Error(err))
+			logger.Log.Error("error encoding response", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
 }
 
-func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {
+func updateMetricsHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		value, ok := metricsService.Get(services.MetricGetParameters{
+		data, err := utils.DecodeJSONRequest[[]models.Metrics](r)
+
+		if err != nil {
+			handleJSONError(w, err)
+			return
+		}
+
+		if err := metricsService.SaveModels(ctx, data); err != nil {
+			logger.Log.Error("error saving data in metrics service", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := utils.EncodeJSONRequest[[]models.Metrics](w, data); err != nil {
+			logger.Log.Error("error encoding response", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+}
+
+func pingHandler(ctx context.Context, healthCheckService HealthCheckService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := healthCheckService.CheckStorageConnection(ctx); err != nil {
+			logger.Log.Error("error check storage connection in health check service", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}
+
+}
+
+func getMetricValueHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		value, err := metricsService.Get(ctx, services.MetricGetParameters{
 			MetricType: chi.URLParam(r, "metricType"),
 			MetricName: chi.URLParam(r, "metricName"),
 		})
 
-		if !ok {
-			http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+		if err != nil {
+			if errors.Is(err, services.ErrMetricNotFound) {
+				http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+				return
+			}
+
+			logger.Log.Error("error get metric data", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -147,42 +209,49 @@ func getMetricValueHandler(metricsService MetricsService) http.HandlerFunc {
 	}
 }
 
-func getMetricValueWithJSONHandler(metricsService MetricsService) http.HandlerFunc {
+func getMetricValueWithJSONHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := utils.DecodeJSONRequest[models.Metrics](r)
 
 		if err != nil {
-			switch err.Error() {
-			case utils.UnsupportedContentTypeCode:
-				w.WriteHeader(http.StatusUnsupportedMediaType)
-			default:
-				logger.Log.Debug("cannot parse json data from request", zap.Error(err))
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
+			handleJSONError(w, err)
 			return
 		}
 
-		value, ok := metricsService.GetModel(data)
+		value, err := metricsService.GetModel(ctx, data)
 
-		if !ok {
-			http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+		if err != nil {
+			if errors.Is(err, services.ErrMetricNotFound) {
+				http.Error(w, "Metric value with such parameters wasn't found", http.StatusNotFound)
+				return
+			}
+
+			logger.Log.Error("error get model metric data", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		if err := utils.EncodeJSONRequest[models.Metrics](w, value); err != nil {
-			logger.Log.Debug("error encoding response", zap.Error(err))
+			logger.Log.Error("error encoding response", zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
 }
 
-func getAllMetricsHandler(metricsService MetricsService) http.HandlerFunc {
+func getAllMetricsHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var result []string
 
-		for _, el := range metricsService.GetAll() {
+		metricData, err := metricsService.GetAll(ctx)
+
+		if err != nil {
+			logger.Log.Error("error get all metric data", zap.Error(err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		for _, el := range metricData {
 			result = append(result, fmt.Sprintf("%s - %s", el.Name, el.Value))
 		}
 
@@ -219,8 +288,8 @@ func SendMetricData(parameters SendMetricDataParameters) error {
 	return nil
 }
 
-func SendMetricModelData(url string, parameters models.Metrics) error {
-	body, err := json.Marshal(parameters)
+func SendMetricModelData(url string, data []models.Metrics) error {
+	body, err := json.Marshal(data)
 
 	if err != nil {
 		return fmt.Errorf("failed to marshal data: %w", err)
@@ -243,7 +312,7 @@ func SendMetricModelData(url string, parameters models.Metrics) error {
 
 	body = buf.Bytes()
 	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/update", url), bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/updates", url), bytes.NewBuffer(body))
 
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

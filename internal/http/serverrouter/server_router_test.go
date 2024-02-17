@@ -3,6 +3,7 @@ package serverrouter
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
@@ -73,14 +74,16 @@ func TestSendMetricModelData(t *testing.T) {
 		{
 			testName: "Should send request with correct body",
 			testServer: createServer(func(r *http.Request) {
-				data, err := utils.DecodeJSONRequest[models.Metrics](r)
+				data, err := utils.DecodeJSONRequest[[]models.Metrics](r)
 
 				require.NoError(t, err)
-				assert.Equal(t, data, models.Metrics{
-					ID:    "metricName",
-					MType: "metricType",
-					Delta: &deltaMock,
-					Value: &valueMock,
+				assert.Equal(t, data, []models.Metrics{
+					{
+						ID:    "metricName",
+						MType: "metricType",
+						Delta: &deltaMock,
+						Value: &valueMock,
+					},
 				})
 			}),
 		},
@@ -96,11 +99,13 @@ func TestSendMetricModelData(t *testing.T) {
 		t.Run(tc.testName, func(t *testing.T) {
 			defer tc.testServer.Close()
 
-			err := SendMetricModelData(tc.testServer.URL, models.Metrics{
-				ID:    "metricName",
-				MType: "metricType",
-				Delta: &deltaMock,
-				Value: &valueMock,
+			err := SendMetricModelData(tc.testServer.URL, []models.Metrics{
+				{
+					ID:    "metricName",
+					MType: "metricType",
+					Delta: &deltaMock,
+					Value: &valueMock,
+				},
 			})
 
 			assert.NoError(t, err)
@@ -113,34 +118,52 @@ type metricsServiceMock struct {
 	modelData map[string]models.Metrics
 }
 
-func (m metricsServiceMock) Save(parameters services.MetricSaveParameters) error {
+func (m metricsServiceMock) Save(ctx context.Context, parameters services.MetricSaveParameters) error {
 	return nil
 }
 
-func (m metricsServiceMock) SaveModel(parameters models.Metrics) error {
+func (m metricsServiceMock) SaveModel(ctx context.Context, parameters models.Metrics) error {
 	return nil
 }
 
-func (m metricsServiceMock) Get(parameters services.MetricGetParameters) (string, bool) {
+func (m metricsServiceMock) SaveModels(ctx context.Context, parameters []models.Metrics) error {
+	return nil
+}
+
+func (m metricsServiceMock) Get(ctx context.Context, parameters services.MetricGetParameters) (string, error) {
 	value, ok := m.data[parameters.MetricName]
 
-	return value, ok
+	if !ok {
+		return "", services.ErrMetricNotFound
+	}
+
+	return value, nil
 }
 
-func (m metricsServiceMock) GetModel(parameters models.Metrics) (models.Metrics, bool) {
+func (m metricsServiceMock) GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error) {
 	value, ok := m.modelData[parameters.ID]
 
-	return value, ok
+	if !ok {
+		return models.Metrics{}, services.ErrMetricNotFound
+	}
+
+	return value, nil
 }
 
-func (m metricsServiceMock) GetAll() []services.MetricEntry {
+func (m metricsServiceMock) GetAll(ctx context.Context) ([]services.MetricEntry, error) {
 	var result []services.MetricEntry
 
 	for key, value := range m.data {
 		result = append(result, services.MetricEntry{Name: key, Value: value})
 	}
 
-	return result
+	return result, nil
+}
+
+type healthCheckServiceMock struct{}
+
+func (hc healthCheckServiceMock) CheckStorageConnection(ctx context.Context) error {
+	return nil
 }
 
 func TestServerRouter(t *testing.T) {
@@ -149,7 +172,7 @@ func TestServerRouter(t *testing.T) {
 			data: map[string]string{
 				"test": "1.1",
 			},
-		}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -245,12 +268,17 @@ func TestServerRouterJson(t *testing.T) {
 	counterDataMock, _ := json.Marshal(models.Metrics{ID: "counter_test", MType: "counter", Delta: &deltaMock})
 	gaugeDataMock, _ := json.Marshal(models.Metrics{ID: "gauge_test", MType: "gauge", Value: &valueMock})
 
+	modelDataMock, _ := json.Marshal([]models.Metrics{
+		{ID: "counter_test", MType: "counter", Delta: &deltaMock},
+		{ID: "gauge_test", MType: "gauge", Value: &valueMock},
+	})
+
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			modelData: map[string]models.Metrics{
 				"gauge_test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -279,6 +307,17 @@ func TestServerRouterJson(t *testing.T) {
 				"Content-Type": "application/json",
 			},
 			body: bytes.NewBuffer(counterDataMock),
+		},
+		{
+			testName:        "Should save correctly model data",
+			methodName:      http.MethodPost,
+			targetURL:       "/updates",
+			expectedCode:    http.StatusOK,
+			expectedMessage: "[{\"id\":\"counter_test\",\"type\":\"counter\",\"delta\":1},{\"id\":\"gauge_test\",\"type\":\"gauge\",\"value\":2.5}]",
+			headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+			body: bytes.NewBuffer(modelDataMock),
 		},
 		{
 			testName:        "Should return found data by using model",
@@ -325,7 +364,7 @@ func TestServerRouterGzip(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, "").Get(),
+		}, healthCheckServiceMock{}, "").Get(context.TODO()),
 	)
 	defer testServer.Close()
 

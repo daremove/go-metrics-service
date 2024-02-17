@@ -11,7 +11,11 @@ const (
 	UnsupportedContentTypeCode = "UnsupportedContentTypeCode"
 )
 
-func DecodeJSONRequest[Model interface{}](r *http.Request) (Model, error) {
+type ModelParameter interface {
+	interface{} | []interface{}
+}
+
+func DecodeJSONRequest[Model ModelParameter](r *http.Request) (Model, error) {
 	var emptyResult Model
 
 	if r.Header.Get("Content-Type") != "application/json" {
