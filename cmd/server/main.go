@@ -57,7 +57,10 @@ func main() {
 	}
 
 	metricsService := metrics.New(storage)
-	router := serverrouter.New(metricsService, healthCheckService, config.endpoint)
+	router := serverrouter.New(metricsService, healthCheckService, serverrouter.RouterConfig{
+		Endpoint:   config.endpoint,
+		SigningKey: config.signingKey,
+	})
 
 	log.Printf("Running server on %s\n", config.endpoint)
 

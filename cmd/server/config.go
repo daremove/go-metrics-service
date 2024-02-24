@@ -14,6 +14,7 @@ type Config struct {
 	restore         bool
 	dsn             string
 	logLevel        string
+	signingKey      string
 }
 
 func NewConfig() Config {
@@ -24,6 +25,7 @@ func NewConfig() Config {
 		restore         bool
 		dsn             string
 		logLevel        string
+		signingKey      string
 	)
 
 	flag.StringVar(&endpoint, "a", "localhost:8080", "address and port to run server")
@@ -31,6 +33,7 @@ func NewConfig() Config {
 	flag.StringVar(&fileStoragePath, "f", "/tmp/metrics-db.json", "path of storage file")
 	flag.BoolVar(&restore, "r", true, "should server restore data from storage file")
 	flag.StringVar(&dsn, "d", "", "data source name for database connection")
+	flag.StringVar(&signingKey, "k", "", "data signing key")
 	flag.Parse()
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -66,10 +69,22 @@ func NewConfig() Config {
 	}
 
 	if l := os.Getenv("LOG_LEVEL"); l != "" {
-		logLevel = l
+		logLevel = "debug"
 	} else {
 		logLevel = "error"
 	}
 
-	return Config{endpoint, storeInterval, fileStoragePath, restore, dsn, logLevel}
+	if signingKeyEnv := os.Getenv("KEY"); signingKeyEnv != "" {
+		signingKey = signingKeyEnv
+	}
+
+	return Config{
+		endpoint,
+		storeInterval,
+		fileStoragePath,
+		restore,
+		dsn,
+		logLevel,
+		signingKey,
+	}
 }

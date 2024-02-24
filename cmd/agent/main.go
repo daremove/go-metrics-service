@@ -65,7 +65,10 @@ func main() {
 				}
 
 				for {
-					if err := serverrouter.SendMetricModelData(fmt.Sprintf("http://%s", config.endpoint), payload); err != nil {
+					if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
+						URL:        fmt.Sprintf("http://%s", config.endpoint),
+						SigningKey: config.signingKey,
+					}); err != nil {
 						d, ok := backoff.Duration()
 
 						if !ok {
