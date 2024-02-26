@@ -8,17 +8,58 @@ import (
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"log"
-	"sync"
 	"time"
 )
+
+type Job struct {
+	metricName  string
+	metricValue float64
+}
+
+func requestWorker(jobs <-chan Job, config Config) {
+	var (
+		ticker  = time.NewTicker(time.Duration(config.reportInterval) * time.Second)
+		payload []models.Metrics
+	)
+
+	for {
+		select {
+		case d := <-jobs:
+			payloadItem := models.Metrics{
+				ID:    d.metricName,
+				MType: "gauge",
+			}
+
+			if metrics.IsCounterMetricType(d.metricName) {
+				value := int64(d.metricValue)
+
+				payloadItem.MType = "counter"
+				payloadItem.Delta = &value
+			} else {
+				value := d.metricValue
+				payloadItem.Value = &value
+			}
+
+			payload = append(payload, payloadItem)
+		case <-ticker.C:
+			if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
+				URL:        fmt.Sprintf("http://%s", config.endpoint),
+				SigningKey: config.signingKey,
+			}); err != nil {
+				log.Printf("failed to send metric data: %s", err)
+			} else {
+				payload = nil
+			}
+		}
+	}
+}
 
 func main() {
 	config := NewConfig()
 
-	var data map[string]float64
-	var mutex sync.Mutex
 	statsService := stats.New()
-	backoff := utils.NewBackoff()
+	jobsCh := make(chan Job, 100)
+	defer close(jobsCh)
 
 	log.Printf(
 		"Starting read stats data every %v and send it every %v to %s",
@@ -27,62 +68,33 @@ func main() {
 		config.endpoint,
 	)
 
+	for i := 0; i < int(config.rateLimit); i++ {
+		go requestWorker(jobsCh, config)
+	}
+
 	utils.Parallelize(
 		func() {
 			for {
 				time.Sleep(time.Duration(config.pollInterval) * time.Second)
 
-				mutex.Lock()
-				data = statsService.Read()
-				mutex.Unlock()
+				for metricName, metricValue := range statsService.Read() {
+					jobsCh <- Job{metricName, metricValue}
+				}
 			}
 		},
 		func() {
 			for {
-				time.Sleep(time.Duration(config.reportInterval) * time.Second)
+				time.Sleep(time.Duration(config.pollInterval) * time.Second)
 
-				backoff.Reset()
-				mutex.Lock()
-				var payload []models.Metrics
+				data, err := statsService.ReadGopsUtil()
+
+				if err != nil {
+					log.Fatal(err)
+				}
 
 				for metricName, metricValue := range data {
-					payloadItem := models.Metrics{
-						ID:    metricName,
-						MType: "gauge",
-					}
-
-					if metrics.IsCounterMetricType(metricName) {
-						value := int64(metricValue)
-
-						payloadItem.MType = "counter"
-						payloadItem.Delta = &value
-					} else {
-						value := metricValue
-						payloadItem.Value = &value
-					}
-
-					payload = append(payload, payloadItem)
+					jobsCh <- Job{metricName, metricValue}
 				}
-
-				for {
-					if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
-						URL:        fmt.Sprintf("http://%s", config.endpoint),
-						SigningKey: config.signingKey,
-					}); err != nil {
-						d, ok := backoff.Duration()
-
-						if !ok {
-							log.Printf("failed to send metric data: %s", err)
-							break
-						} else {
-							time.Sleep(d)
-							continue
-						}
-					}
-					break
-				}
-
-				mutex.Unlock()
 			}
 		},
 	)
