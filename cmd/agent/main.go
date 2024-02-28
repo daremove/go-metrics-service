@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/models"
@@ -8,6 +9,7 @@ import (
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -16,14 +18,19 @@ type Job struct {
 	metricValue float64
 }
 
-func requestWorker(jobs <-chan Job, config Config) {
+func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config) {
+	defer wg.Done()
+
 	var (
 		ticker  = time.NewTicker(time.Duration(config.reportInterval) * time.Second)
 		payload []models.Metrics
 	)
+	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case d := <-jobs:
 			payloadItem := models.Metrics{
 				ID:    d.metricName,
@@ -54,12 +61,60 @@ func requestWorker(jobs <-chan Job, config Config) {
 	}
 }
 
-func main() {
-	config := NewConfig()
-
-	statsService := stats.New()
+func startReadMetrics(ctx context.Context, wg *sync.WaitGroup, config Config) chan Job {
 	jobsCh := make(chan Job, 100)
-	defer close(jobsCh)
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		defer close(jobsCh)
+
+		var (
+			ticker       = time.NewTicker(time.Duration(config.pollInterval) * time.Second)
+			statsService = stats.New()
+		)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				utils.Parallelize(
+					func() {
+						for metricName, metricValue := range statsService.Read() {
+							jobsCh <- Job{metricName, metricValue}
+						}
+					},
+					func() {
+						data, err := statsService.ReadGopsUtil()
+
+						if err != nil {
+							log.Fatal(err)
+						}
+
+						for metricName, metricValue := range data {
+							jobsCh <- Job{metricName, metricValue}
+						}
+					},
+				)
+			}
+		}
+	}()
+
+	return jobsCh
+}
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		config = NewConfig()
+		wg     sync.WaitGroup
+		jobsCh = startReadMetrics(ctx, &wg, config)
+	)
 
 	log.Printf(
 		"Starting read stats data every %v and send it every %v to %s",
@@ -69,33 +124,9 @@ func main() {
 	)
 
 	for i := 0; i < int(config.rateLimit); i++ {
-		go requestWorker(jobsCh, config)
+		wg.Add(1)
+		go jobWorker(ctx, &wg, jobsCh, config)
 	}
 
-	utils.Parallelize(
-		func() {
-			for {
-				time.Sleep(time.Duration(config.pollInterval) * time.Second)
-
-				for metricName, metricValue := range statsService.Read() {
-					jobsCh <- Job{metricName, metricValue}
-				}
-			}
-		},
-		func() {
-			for {
-				time.Sleep(time.Duration(config.pollInterval) * time.Second)
-
-				data, err := statsService.ReadGopsUtil()
-
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				for metricName, metricValue := range data {
-					jobsCh <- Job{metricName, metricValue}
-				}
-			}
-		},
-	)
+	wg.Wait()
 }

@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"fmt"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"math/rand"
@@ -55,7 +56,7 @@ func (s *Stats) Read() map[string]float64 {
 }
 
 func (s *Stats) ReadGopsUtil() (map[string]float64, error) {
-	cpuCounts, err := cpu.Counts(false)
+	cpuPercents, err := cpu.Percent(0, true)
 
 	if err != nil {
 		return nil, err
@@ -67,9 +68,14 @@ func (s *Stats) ReadGopsUtil() (map[string]float64, error) {
 		return nil, err
 	}
 
-	return map[string]float64{
-		"CPUutilization1": float64(cpuCounts),
-		"TotalMemory":     float64(usageStat.Total),
-		"FreeMemory":      float64(usageStat.Free),
-	}, nil
+	stats := map[string]float64{
+		"TotalMemory": float64(usageStat.Total),
+		"FreeMemory":  float64(usageStat.Free),
+	}
+
+	for i, cpuPercent := range cpuPercents {
+		stats[fmt.Sprintf("CPUutilization%d", i)] = cpuPercent
+	}
+
+	return stats, nil
 }
