@@ -11,6 +11,8 @@ type Config struct {
 	endpoint       string
 	reportInterval uint64
 	pollInterval   uint64
+	signingKey     string
+	rateLimit      uint64
 }
 
 func NewConfig() Config {
@@ -18,11 +20,15 @@ func NewConfig() Config {
 		endpoint       string
 		reportInterval uint64
 		pollInterval   uint64
+		signingKey     string
+		rateLimit      uint64
 	)
 
 	flag.StringVar(&endpoint, "a", "localhost:8080", "address and port where to send data")
 	flag.Uint64Var(&reportInterval, "r", 10, "frequency of sending data to server")
 	flag.Uint64Var(&pollInterval, "p", 2, "frequency of polling stats data")
+	flag.StringVar(&signingKey, "k", "", "data signing key")
+	flag.Uint64Var(&rateLimit, "l", 1, "rate limit of batched request")
 	flag.Parse()
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -49,9 +55,25 @@ func NewConfig() Config {
 		pollInterval = uint64(value)
 	}
 
+	if signingKeyEnv := os.Getenv("KEY"); signingKeyEnv != "" {
+		signingKey = signingKeyEnv
+	}
+
+	if rateLimitEnv := os.Getenv("RATE_LIMIT"); rateLimitEnv != "" {
+		value, err := strconv.Atoi(rateLimitEnv)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		rateLimit = uint64(value)
+	}
+
 	return Config{
 		endpoint,
 		reportInterval,
 		pollInterval,
+		signingKey,
+		rateLimit,
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/daremove/go-metrics-service/internal/logger"
+	"github.com/daremove/go-metrics-service/internal/middlewares/dataintergity"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
@@ -23,10 +25,15 @@ import (
 	"strings"
 )
 
+type RouterConfig struct {
+	Endpoint   string
+	SigningKey string
+}
+
 type ServerRouter struct {
 	metricsService     MetricsService
 	healthCheckService HealthCheckService
-	endpoint           string
+	config             RouterConfig
 }
 
 type MetricsService interface {
@@ -47,8 +54,8 @@ type HealthCheckService interface {
 	CheckStorageConnection(ctx context.Context) error
 }
 
-func New(metricsService MetricsService, healthCheckService HealthCheckService, endpoint string) *ServerRouter {
-	return &ServerRouter{metricsService, healthCheckService, endpoint}
+func New(metricsService MetricsService, healthCheckService HealthCheckService, config RouterConfig) *ServerRouter {
+	return &ServerRouter{metricsService, healthCheckService, config}
 }
 
 func (router *ServerRouter) Get(ctx context.Context) chi.Router {
@@ -56,6 +63,9 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 
 	r.Use(logger.RequestLogger)
 	r.Use(middleware.NewCompressor(flate.DefaultCompression).Handler)
+	r.Use(dataintergity.NewMiddleware(dataintergity.DataIntegrityMiddlewareConfig{
+		SigningKey: router.config.SigningKey,
+	}))
 	r.Use(gzipm.GzipMiddleware)
 
 	r.Route("/", func(r chi.Router) {
@@ -98,16 +108,16 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 }
 
 func (router *ServerRouter) Run(ctx context.Context) {
-	log.Fatal(http.ListenAndServe(router.endpoint, router.Get(ctx)))
+	log.Fatal(http.ListenAndServe(router.config.Endpoint, router.Get(ctx)))
 }
 
 func handleJSONError(w http.ResponseWriter, err error) {
 	switch err.Error() {
 	case utils.UnsupportedContentTypeCode:
-		w.WriteHeader(http.StatusUnsupportedMediaType)
+		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 	default:
 		logger.Log.Debug("cannot parse json data from request", zap.Error(err))
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -288,7 +298,12 @@ func SendMetricData(parameters SendMetricDataParameters) error {
 	return nil
 }
 
-func SendMetricModelData(url string, data []models.Metrics) error {
+type SendMetricModelDataConfig struct {
+	URL        string
+	SigningKey string
+}
+
+func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig) error {
 	body, err := json.Marshal(data)
 
 	if err != nil {
@@ -312,7 +327,7 @@ func SendMetricModelData(url string, data []models.Metrics) error {
 
 	body = buf.Bytes()
 	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/updates", url), bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/updates", config.URL), bytes.NewBuffer(body))
 
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -321,6 +336,16 @@ func SendMetricModelData(url string, data []models.Metrics) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Encoding", "gzip")
+
+	if config.SigningKey != "" {
+		signedBody, err := utils.SignData(body, config.SigningKey)
+
+		if err != nil {
+			return fmt.Errorf("failed to sign data: %w", err)
+		}
+
+		req.Header.Set(dataintergity.HeaderKeyHash, hex.EncodeToString(signedBody))
+	}
 
 	res, err := client.Do(req)
 

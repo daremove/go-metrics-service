@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"github.com/daremove/go-metrics-service/internal/middlewares/dataintergity"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
@@ -69,6 +70,7 @@ func TestSendMetricModelData(t *testing.T) {
 	}
 	testCases := []struct {
 		testName   string
+		signingKey string
 		testServer *httptest.Server
 	}{
 		{
@@ -93,19 +95,37 @@ func TestSendMetricModelData(t *testing.T) {
 				assert.Equal(t, "POST", r.Method)
 			}),
 		},
+		{
+			testName: "Shouldn't sign data if signing key wasn't provided",
+			testServer: createServer(func(r *http.Request) {
+				assert.Equal(t, "POST", r.Method)
+				assert.Equal(t, "", r.Header.Get(dataintergity.HeaderKeyHash))
+			}),
+		},
+		{
+			testName:   "Should sign data if signing key was provided",
+			signingKey: "secret",
+			testServer: createServer(func(r *http.Request) {
+				assert.Equal(t, "POST", r.Method)
+				assert.Equal(t, "0d4c588ae2a9e2bc7f5e25b64b16c9f531a1e8a8252b40a4ab98152731026f3a", r.Header.Get(dataintergity.HeaderKeyHash))
+			}),
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
 			defer tc.testServer.Close()
 
-			err := SendMetricModelData(tc.testServer.URL, []models.Metrics{
+			err := SendMetricModelData([]models.Metrics{
 				{
 					ID:    "metricName",
 					MType: "metricType",
 					Delta: &deltaMock,
 					Value: &valueMock,
 				},
+			}, SendMetricModelDataConfig{
+				URL:        tc.testServer.URL,
+				SigningKey: tc.signingKey,
 			})
 
 			assert.NoError(t, err)
@@ -172,7 +192,7 @@ func TestServerRouter(t *testing.T) {
 			data: map[string]string{
 				"test": "1.1",
 			},
-		}, healthCheckServiceMock{}, "").Get(context.TODO()),
+		}, healthCheckServiceMock{}, RouterConfig{}).Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -225,10 +245,11 @@ func TestServerRouter(t *testing.T) {
 			expectedMessage: "<html><head><title>All metrics</title></head><body>test - 1.1</body></html>",
 		},
 		{
-			testName:     "Should return 414 if appropriate content-type wasn't set for json handler",
-			methodName:   http.MethodPost,
-			targetURL:    "/update",
-			expectedCode: http.StatusUnsupportedMediaType,
+			testName:        "Should return 414 if appropriate content-type wasn't set for json handler",
+			methodName:      http.MethodPost,
+			targetURL:       "/update",
+			expectedCode:    http.StatusUnsupportedMediaType,
+			expectedMessage: "UnsupportedContentTypeCode\n",
 		},
 	}
 
@@ -278,7 +299,7 @@ func TestServerRouterJson(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"gauge_test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, healthCheckServiceMock{}, "").Get(context.TODO()),
+		}, healthCheckServiceMock{}, RouterConfig{}).Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -292,10 +313,11 @@ func TestServerRouterJson(t *testing.T) {
 		body            io.Reader
 	}{
 		{
-			testName:     "Should return 414 if appropriate content-type wasn't set for json handler",
-			methodName:   http.MethodPost,
-			targetURL:    "/update",
-			expectedCode: http.StatusUnsupportedMediaType,
+			testName:        "Should return 414 if appropriate content-type wasn't set for json handler",
+			methodName:      http.MethodPost,
+			targetURL:       "/update",
+			expectedCode:    http.StatusUnsupportedMediaType,
+			expectedMessage: "UnsupportedContentTypeCode\n",
 		},
 		{
 			testName:        "Should save correctly metric data by using model",
@@ -364,7 +386,7 @@ func TestServerRouterGzip(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"test": {ID: "test", MType: "gauge", Value: &valueMock},
 			},
-		}, healthCheckServiceMock{}, "").Get(context.TODO()),
+		}, healthCheckServiceMock{}, RouterConfig{}).Get(context.TODO()),
 	)
 	defer testServer.Close()
 

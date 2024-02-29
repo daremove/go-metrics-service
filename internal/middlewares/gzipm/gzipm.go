@@ -1,7 +1,9 @@
 package gzipm
 
 import (
+	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/utils"
+	"go.uber.org/zap"
 	"net/http"
 	"strings"
 )
@@ -15,7 +17,8 @@ func GzipMiddleware(h http.Handler) http.Handler {
 			cr, err := utils.NewCompressReader(r.Body)
 
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
+				logger.Log.Error("error decompress data", zap.Error(err))
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 
