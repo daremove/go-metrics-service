@@ -62,11 +62,13 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 	r := chi.NewRouter()
 
 	r.Use(logger.RequestLogger)
-	r.Use(middleware.NewCompressor(flate.DefaultCompression).Handler)
+	r.Use(middleware.NewCompressor(flate.BestSpeed).Handler)
 	r.Use(dataintergity.NewMiddleware(dataintergity.DataIntegrityMiddlewareConfig{
 		SigningKey: router.config.SigningKey,
 	}))
 	r.Use(gzipm.GzipMiddleware)
+
+	r.Mount("/debug", middleware.Profiler())
 
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", getAllMetricsHandler(ctx, router.metricsService))
