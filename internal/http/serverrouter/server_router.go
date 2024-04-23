@@ -9,6 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"sort"
+	"strings"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/middlewares/dataintergity"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
@@ -18,11 +24,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
-	"io"
-	"log"
-	"net/http"
-	"sort"
-	"strings"
 )
 
 type RouterConfig struct {

@@ -3,11 +3,12 @@ package database
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/daremove/go-metrics-service/internal/storage"
 	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"time"
 )
 
 const (

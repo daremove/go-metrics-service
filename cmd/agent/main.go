@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"sync"
+	"time"
+
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
-	"log"
-	"sync"
-	"time"
 )
 
 type Job struct {

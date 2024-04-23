@@ -2,10 +2,11 @@ package profiler
 
 import (
 	"expvar"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
 	"net/http/pprof"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func Profiler() http.Handler {

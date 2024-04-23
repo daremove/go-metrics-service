@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/services/filestorage"
@@ -10,7 +12,6 @@ import (
 	"github.com/daremove/go-metrics-service/internal/storage/database"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/daremove/go-metrics-service/internal/utils"
-	"log"
 )
 
 func main() {

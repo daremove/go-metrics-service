@@ -1,11 +1,12 @@
 package gzipm
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"go.uber.org/zap"
-	"net/http"
-	"strings"
 )
 
 func GzipMiddleware(h http.Handler) http.Handler {

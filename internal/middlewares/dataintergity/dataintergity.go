@@ -6,11 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"go.uber.org/zap"
-	"io"
-	"net/http"
 )
 
 type DataIntegrityMiddlewareConfig struct {

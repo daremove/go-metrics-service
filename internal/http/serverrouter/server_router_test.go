@@ -5,6 +5,12 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
 	"github.com/daremove/go-metrics-service/internal/middlewares/dataintergity"
 	"github.com/daremove/go-metrics-service/internal/middlewares/gzipm"
 	"github.com/daremove/go-metrics-service/internal/models"
@@ -12,11 +18,6 @@ import (
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
 )
 
 func TestSendMetricData(t *testing.T) {
