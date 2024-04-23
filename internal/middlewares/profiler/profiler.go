@@ -1,3 +1,4 @@
+// Пакет profiler предоставляет HTTP обработчики для инструментов профилирования.
 package profiler
 
 import (
@@ -9,6 +10,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// Profiler создает http.Handler, который включает роуты для инструментов профилирования.
+// Это включает стандартные обработчики pprof для профилирования производительности приложения,
+// а также маршруты для мониторинга переменных с помощью expvar.
 func Profiler() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.NoCache)

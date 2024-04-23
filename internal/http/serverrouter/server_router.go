@@ -1,3 +1,4 @@
+// Пакет serverrouter предназначен для настройки маршрутизации API на сервере.
 package serverrouter
 
 import (
@@ -26,39 +27,40 @@ import (
 	"go.uber.org/zap"
 )
 
+// RouterConfig содержит конфигурацию для маршрутизатора сервера.
 type RouterConfig struct {
-	Endpoint   string
-	SigningKey string
+	Endpoint   string // URL-адрес конечной точки сервера
+	SigningKey string // Ключ для подписи данных
 }
 
+// ServerRouter предоставляет маршрутизацию запросов к сервисам метрик и проверки состояния.
 type ServerRouter struct {
-	metricsService     MetricsService
-	healthCheckService HealthCheckService
-	config             RouterConfig
+	metricsService     MetricsService     // Сервис для работы с метриками
+	healthCheckService HealthCheckService // Сервис для проверки состояния
+	config             RouterConfig       // Конфигурация маршрутизатора
 }
 
+// MetricsService определяет интерфейс для сервиса метрик.
 type MetricsService interface {
-	Save(ctx context.Context, parameters services.MetricSaveParameters) error
-
-	SaveModel(ctx context.Context, parameters models.Metrics) error
-
-	SaveModels(ctx context.Context, parameters []models.Metrics) error
-
-	Get(ctx context.Context, parameters services.MetricGetParameters) (string, error)
-
-	GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error)
-
-	GetAll(ctx context.Context) ([]services.MetricEntry, error)
+	Save(ctx context.Context, parameters services.MetricSaveParameters) error         // Сохраняет метрику
+	SaveModel(ctx context.Context, parameters models.Metrics) error                   // Сохраняет модель метрик
+	SaveModels(ctx context.Context, parameters []models.Metrics) error                // Сохраняет несколько моделей метрик
+	Get(ctx context.Context, parameters services.MetricGetParameters) (string, error) // Получает значение метрики
+	GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error)  // Получает модель метрики
+	GetAll(ctx context.Context) ([]services.MetricEntry, error)                       // Получает все метрики
 }
 
+// HealthCheckService определяет интерфейс для сервиса проверки состояния.
 type HealthCheckService interface {
-	CheckStorageConnection(ctx context.Context) error
+	CheckStorageConnection(ctx context.Context) error // Проверяет соединение с хранилищем
 }
 
+// New создает новый экземпляр ServerRouter.
 func New(metricsService MetricsService, healthCheckService HealthCheckService, config RouterConfig) *ServerRouter {
 	return &ServerRouter{metricsService, healthCheckService, config}
 }
 
+// Get инициализирует и возвращает маршрутизатор с предварительно сконфигурированными маршрутами.
 func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 	r := chi.NewRouter()
 
@@ -110,6 +112,7 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 	return r
 }
 
+// Run запускает сервер на заданном порту и с заданными маршрутами.
 func (router *ServerRouter) Run(ctx context.Context) {
 	log.Fatal(http.ListenAndServe(router.config.Endpoint, router.Get(ctx)))
 }
@@ -278,22 +281,22 @@ func getAllMetricsHandler(ctx context.Context, metricsService MetricsService) ht
 	}
 }
 
+// SendMetricDataParameters определяет параметры для отправки данных метрик.
 type SendMetricDataParameters struct {
-	URL         string
-	MetricType  string
-	MetricName  string
-	MetricValue string
+	URL         string // URL-адрес сервера
+	MetricType  string // Тип метрики
+	MetricName  string // Имя метрики
+	MetricValue string // Значение метрики
 }
 
+// SendMetricData осуществляет отправку данных метрики по HTTP POST.
 func SendMetricData(parameters SendMetricDataParameters) error {
 	res, err := http.Post(fmt.Sprintf("%s/update/%s/%s/%s", parameters.URL, parameters.MetricType, parameters.MetricName, parameters.MetricValue), "text/plain", nil)
-
 	if err != nil {
 		return fmt.Errorf("failed to send data by using POST method: %w", err)
 	}
 
 	err = res.Body.Close()
-
 	if err != nil {
 		return fmt.Errorf("failed to close response body: %w", err)
 	}
@@ -301,11 +304,13 @@ func SendMetricData(parameters SendMetricDataParameters) error {
 	return nil
 }
 
+// SendMetricModelDataConfig содержит конфигурацию для отправки модели данных метрик.
 type SendMetricModelDataConfig struct {
-	URL        string
-	SigningKey string
+	URL        string // URL-адрес сервера
+	SigningKey string // Ключ для подписи данных
 }
 
+// SendMetricModelData отправляет модель данных метрик на указанный сервер с возможной подписью данных.
 func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig) error {
 	body, err := json.Marshal(data)
 

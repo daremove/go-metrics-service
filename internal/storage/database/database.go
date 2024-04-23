@@ -1,3 +1,5 @@
+// Пакет database предоставляет функциональность для работы с базой данных,
+// включая операции добавления и извлечения метрик.
 package database
 
 import (
@@ -11,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Запросы для вставки метрик в базу данных с обработкой конфликтов.
 const (
 	InsertGaugeMetricQuery = `
 		INSERT INTO
@@ -28,10 +31,12 @@ const (
 	`
 )
 
+// Database структура для взаимодействия с базой данных.
 type Database struct {
 	db *pgxpool.Pool
 }
 
+// checkConnection проверяет соединение с базой данных.
 func checkConnection(ctx context.Context, db *pgxpool.Pool) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
 	defer cancel()
@@ -43,10 +48,12 @@ func checkConnection(ctx context.Context, db *pgxpool.Pool) error {
 	return nil
 }
 
+// Ping проверяет доступность базы данных.
 func (d *Database) Ping(ctx context.Context) error {
 	return checkConnection(ctx, d.db)
 }
 
+// GetGaugeMetric извлекает метрику типа gauge из базы данных.
 func (d *Database) GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error) {
 	var result float64
 
@@ -63,6 +70,7 @@ func (d *Database) GetGaugeMetric(ctx context.Context, key string) (storage.Gaug
 	return storage.GaugeMetric{Name: key, Value: result}, nil
 }
 
+// GetGaugeMetrics извлекает все метрики типа gauge из базы данных.
 func (d *Database) GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error) {
 	var result []storage.GaugeMetric
 
@@ -91,6 +99,7 @@ func (d *Database) GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, 
 	return result, nil
 }
 
+// GetCounterMetric извлекает метрику типа counter из базы данных.
 func (d *Database) GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error) {
 	var result int64
 
@@ -107,6 +116,7 @@ func (d *Database) GetCounterMetric(ctx context.Context, key string) (storage.Co
 	return storage.CounterMetric{Name: key, Value: result}, nil
 }
 
+// GetCounterMetrics извлекает все метрики типа counter из базы данных.
 func (d *Database) GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error) {
 	var result []storage.CounterMetric
 
@@ -135,6 +145,7 @@ func (d *Database) GetCounterMetrics(ctx context.Context) ([]storage.CounterMetr
 	return result, nil
 }
 
+// AddGaugeMetric добавляет или обновляет метрику типа gauge в базе данных.
 func (d *Database) AddGaugeMetric(ctx context.Context, key string, value float64) error {
 	if _, err := d.db.Exec(ctx, InsertGaugeMetricQuery, key, value); err != nil {
 		return err
@@ -143,6 +154,7 @@ func (d *Database) AddGaugeMetric(ctx context.Context, key string, value float64
 	return nil
 }
 
+// AddCounterMetric добавляет или обновляет метрику типа counter в базе данных.
 func (d *Database) AddCounterMetric(ctx context.Context, key string, value int64) error {
 	if _, err := d.db.Exec(ctx, InsertCounterMetricQuery, key, value); err != nil {
 		return err
@@ -151,6 +163,7 @@ func (d *Database) AddCounterMetric(ctx context.Context, key string, value int64
 	return nil
 }
 
+// AddMetrics добавляет или обновляет несколько метрик в базе данных в рамках одной транзакции.
 func (d *Database) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error {
 	tx, err := d.db.BeginTx(ctx, pgx.TxOptions{})
 
@@ -175,6 +188,7 @@ func (d *Database) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeM
 	return tx.Commit(ctx)
 }
 
+// New инициализирует и возвращает новый экземпляр Database.
 func New(ctx context.Context, dsn string) (*Database, error) {
 	db, err := pgxpool.New(ctx, dsn)
 

@@ -1,3 +1,4 @@
+// Пакет metrics предоставляет функции для работы с метриками, включая сохранение, получение и обновление данных.
 package metrics
 
 import (
@@ -11,29 +12,30 @@ import (
 	"github.com/daremove/go-metrics-service/internal/storage"
 )
 
+// Metrics предоставляет методы для управления метриками через определенное хранилище.
 type Metrics struct {
 	storage Storage
 }
 
+// Storage определяет интерфейс для механизмов хранения, используемых системой метрик.
 type Storage interface {
 	GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error)
 	GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error)
-
 	GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error)
 	GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error)
-
 	AddGaugeMetric(ctx context.Context, key string, value float64) error
 	AddCounterMetric(ctx context.Context, key string, value int64) error
-
 	AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error
 }
 
+// New создает новый экземпляр Metrics.
 func New(storage Storage) *Metrics {
 	return &Metrics{
 		storage,
 	}
 }
 
+// Save сохраняет одиночную метрику на основе предоставленных параметров.
 func (m *Metrics) Save(ctx context.Context, parameters services.MetricSaveParameters) error {
 	switch parameters.MetricType {
 	case "gauge":
@@ -63,6 +65,7 @@ func (m *Metrics) Save(ctx context.Context, parameters services.MetricSaveParame
 	return nil
 }
 
+// SaveModel сохраняет модель метрики.
 func (m *Metrics) SaveModel(ctx context.Context, parameters models.Metrics) error {
 	switch parameters.MType {
 	case "gauge":
@@ -80,6 +83,7 @@ func (m *Metrics) SaveModel(ctx context.Context, parameters models.Metrics) erro
 	return nil
 }
 
+// SaveModels сохраняет массив метрик.
 func (m *Metrics) SaveModels(ctx context.Context, parameters []models.Metrics) error {
 	var gaugeMetrics []storage.GaugeMetric
 	var counterMetrics []storage.CounterMetric
@@ -102,6 +106,7 @@ func (m *Metrics) SaveModels(ctx context.Context, parameters []models.Metrics) e
 	return nil
 }
 
+// Get возвращает значение метрики по указанным параметрам.
 func (m *Metrics) Get(ctx context.Context, parameters services.MetricGetParameters) (string, error) {
 	switch parameters.MetricType {
 	case "gauge":
@@ -133,6 +138,7 @@ func (m *Metrics) Get(ctx context.Context, parameters services.MetricGetParamete
 	}
 }
 
+// GetModel возвращает полную модель метрики.
 func (m *Metrics) GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error) {
 	switch parameters.MType {
 	case "gauge":
@@ -172,6 +178,7 @@ func (m *Metrics) GetModel(ctx context.Context, parameters models.Metrics) (mode
 	}
 }
 
+// GetAll извлекает все метрики из хранилища и формирует список для отображения.
 func (m *Metrics) GetAll(ctx context.Context) ([]services.MetricEntry, error) {
 	var result []services.MetricEntry
 
@@ -198,6 +205,7 @@ func (m *Metrics) GetAll(ctx context.Context) ([]services.MetricEntry, error) {
 	return result, nil
 }
 
+// IsCounterMetricType определяет, является ли метрика счетчиком.
 func IsCounterMetricType(metricName string) bool {
 	return metricName == "PollCount"
 }

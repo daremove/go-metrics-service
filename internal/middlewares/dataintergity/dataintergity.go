@@ -1,3 +1,4 @@
+// Пакет dataintergity предоставляет функциональность для проверки целостности данных в HTTP запросах и ответах.
 package dataintergity
 
 import (
@@ -14,40 +15,44 @@ import (
 	"go.uber.org/zap"
 )
 
+// DataIntegrityMiddlewareConfig содержит конфигурацию для middleware проверки целостности данных.
 type DataIntegrityMiddlewareConfig struct {
-	SigningKey string
+	SigningKey string // Ключ для подписи данных
 }
 
 var (
+	// ErrUnauthenticatedData ошибка, возникающая когда данные не прошли аутентификацию.
 	ErrUnauthenticatedData = errors.New("unauthenticated data")
-	ErrNoHeaderProvided    = errors.New("header with hash wasn't provided")
+	// ErrNoHeaderProvided ошибка, возникающая когда не предоставлен заголовок с хэшем.
+	ErrNoHeaderProvided = errors.New("header with hash wasn't provided")
 )
 
+// HeaderKeyHash имя HTTP заголовка, используемого для передачи хэша.
 const (
 	HeaderKeyHash = "HashSHA256"
 )
 
+// ResponseWriterWithSignature реализует http.ResponseWriter, добавляя подпись к ответам.
 type ResponseWriterWithSignature struct {
-	http.ResponseWriter
-	signingKey string
+	http.ResponseWriter        // Встроенный ResponseWriter
+	signingKey          string // Ключ для создания подписи
 }
 
+// Write переопределяет метод Write для ResponseWriter, добавляя подпись данных.
 func (w ResponseWriterWithSignature) Write(data []byte) (int, error) {
 	if w.signingKey != "" {
 		signedData, err := utils.SignData(data, w.signingKey)
-
 		if err != nil {
 			return 0, fmt.Errorf("failed to sign data: %w", err)
 		}
 
 		w.ResponseWriter.Header().Set(HeaderKeyHash, hex.EncodeToString(signedData))
-
-		return w.ResponseWriter.Write(data)
 	}
 
 	return w.ResponseWriter.Write(data)
 }
 
+// NewMiddleware создает новый экземпляр middleware для проверки и добавления целостности данных.
 func NewMiddleware(config DataIntegrityMiddlewareConfig) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
