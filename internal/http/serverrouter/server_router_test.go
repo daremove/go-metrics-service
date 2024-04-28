@@ -139,19 +139,19 @@ type metricsServiceMock struct {
 	modelData map[string]models.Metrics
 }
 
-func (m metricsServiceMock) Save(ctx context.Context, parameters services.MetricSaveParameters) error {
+func (m metricsServiceMock) Save(_ context.Context, _ services.MetricSaveParameters) error {
 	return nil
 }
 
-func (m metricsServiceMock) SaveModel(ctx context.Context, parameters models.Metrics) error {
+func (m metricsServiceMock) SaveModel(_ context.Context, _ models.Metrics) error {
 	return nil
 }
 
-func (m metricsServiceMock) SaveModels(ctx context.Context, parameters []models.Metrics) error {
+func (m metricsServiceMock) SaveModels(_ context.Context, _ []models.Metrics) error {
 	return nil
 }
 
-func (m metricsServiceMock) Get(ctx context.Context, parameters services.MetricGetParameters) (string, error) {
+func (m metricsServiceMock) Get(_ context.Context, parameters services.MetricGetParameters) (string, error) {
 	value, ok := m.data[parameters.MetricName]
 
 	if !ok {
@@ -161,7 +161,7 @@ func (m metricsServiceMock) Get(ctx context.Context, parameters services.MetricG
 	return value, nil
 }
 
-func (m metricsServiceMock) GetModel(ctx context.Context, parameters models.Metrics) (models.Metrics, error) {
+func (m metricsServiceMock) GetModel(_ context.Context, parameters models.Metrics) (models.Metrics, error) {
 	value, ok := m.modelData[parameters.ID]
 
 	if !ok {
@@ -171,7 +171,7 @@ func (m metricsServiceMock) GetModel(ctx context.Context, parameters models.Metr
 	return value, nil
 }
 
-func (m metricsServiceMock) GetAll(ctx context.Context) ([]services.MetricEntry, error) {
+func (m metricsServiceMock) GetAll(_ context.Context) ([]services.MetricEntry, error) {
 	var result []services.MetricEntry
 
 	for key, value := range m.data {
@@ -183,7 +183,7 @@ func (m metricsServiceMock) GetAll(ctx context.Context) ([]services.MetricEntry,
 
 type healthCheckServiceMock struct{}
 
-func (hc healthCheckServiceMock) CheckStorageConnection(ctx context.Context) error {
+func (hc healthCheckServiceMock) CheckStorageConnection(_ context.Context) error {
 	return nil
 }
 
@@ -287,18 +287,18 @@ func TestServerRouterJson(t *testing.T) {
 	var deltaMock int64 = 1
 	var valueMock = 2.5
 
-	counterDataMock, _ := json.Marshal(models.Metrics{ID: "counter_test", MType: "counter", Delta: &deltaMock})
-	gaugeDataMock, _ := json.Marshal(models.Metrics{ID: "gauge_test", MType: "gauge", Value: &valueMock})
+	counterDataMock, _ := json.Marshal(models.Metrics{ID: "counter_test", MType: models.CounterMetricType, Delta: &deltaMock})
+	gaugeDataMock, _ := json.Marshal(models.Metrics{ID: "gauge_test", MType: models.GaugeMetricType, Value: &valueMock})
 
 	modelDataMock, _ := json.Marshal([]models.Metrics{
-		{ID: "counter_test", MType: "counter", Delta: &deltaMock},
-		{ID: "gauge_test", MType: "gauge", Value: &valueMock},
+		{ID: "counter_test", MType: models.CounterMetricType, Delta: &deltaMock},
+		{ID: "gauge_test", MType: models.GaugeMetricType, Value: &valueMock},
 	})
 
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			modelData: map[string]models.Metrics{
-				"gauge_test": {ID: "test", MType: "gauge", Value: &valueMock},
+				"gauge_test": {ID: "test", MType: models.GaugeMetricType, Value: &valueMock},
 			},
 		}, healthCheckServiceMock{}, RouterConfig{}).Get(context.TODO()),
 	)
@@ -385,7 +385,7 @@ func TestServerRouterGzip(t *testing.T) {
 				"test": "1.1",
 			},
 			modelData: map[string]models.Metrics{
-				"test": {ID: "test", MType: "gauge", Value: &valueMock},
+				"test": {ID: "test", MType: models.GaugeMetricType, Value: &valueMock},
 			},
 		}, healthCheckServiceMock{}, RouterConfig{}).Get(context.TODO()),
 	)
@@ -415,7 +415,7 @@ func TestServerRouterGzip(t *testing.T) {
 	t.Run("Should accept gzip data", func(t *testing.T) {
 		body, err := json.Marshal(models.Metrics{
 			ID:    "test",
-			MType: "gauge",
+			MType: models.GaugeMetricType,
 			Value: &valueMock,
 		})
 

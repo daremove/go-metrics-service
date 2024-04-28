@@ -34,7 +34,7 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 }
 
 // Log предоставляет глобальный доступ к логгеру zap.Logger.
-var Log *zap.Logger = zap.NewNop()
+var Log = zap.NewNop()
 
 // Initialize инициализирует логгер с указанным уровнем логирования.
 func Initialize(level string) error {

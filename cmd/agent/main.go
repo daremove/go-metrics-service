@@ -35,13 +35,13 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 		case d := <-jobs:
 			payloadItem := models.Metrics{
 				ID:    d.metricName,
-				MType: "gauge",
+				MType: models.GaugeMetricType,
 			}
 
 			if metrics.IsCounterMetricType(d.metricName) {
 				value := int64(d.metricValue)
 
-				payloadItem.MType = "counter"
+				payloadItem.MType = models.CounterMetricType
 				payloadItem.Delta = &value
 			} else {
 				value := d.metricValue

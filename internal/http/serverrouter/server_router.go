@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/daremove/go-metrics-service/internal/middlewares/profiler"
 	"io"
 	"log"
 	"net/http"
@@ -71,7 +72,7 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 	}))
 	r.Use(gzipm.GzipMiddleware)
 
-	r.Mount("/debug", middleware.Profiler())
+	r.Mount("/debug", profiler.Profiler())
 
 	r.Route("/", func(r chi.Router) {
 		r.Get("/", getAllMetricsHandler(ctx, router.metricsService))
@@ -257,8 +258,6 @@ func getMetricValueWithJSONHandler(ctx context.Context, metricsService MetricsSe
 
 func getAllMetricsHandler(ctx context.Context, metricsService MetricsService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var result []string
-
 		metricData, err := metricsService.GetAll(ctx)
 
 		if err != nil {
@@ -266,6 +265,8 @@ func getAllMetricsHandler(ctx context.Context, metricsService MetricsService) ht
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		result := make([]string, 0, len(metricData))
 
 		for _, el := range metricData {
 			result = append(result, fmt.Sprintf("%s - %s", el.Name, el.Value))

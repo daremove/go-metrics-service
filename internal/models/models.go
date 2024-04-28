@@ -1,6 +1,11 @@
 // Пакет models предназначен для структур данных, используемых во всем приложении.
 package models
 
+const (
+	GaugeMetricType   string = "gauge"
+	CounterMetricType string = "counter"
+)
+
 // Metrics описывает структуру данных метрики, которая может быть типа "gauge" или "counter".
 type Metrics struct {
 	ID    string   `json:"id"`              // Имя метрики
