@@ -1,3 +1,4 @@
+// Пакет utils предоставляет утилитные функции и структуры, используемые во всем приложении.
 package utils
 
 import (
@@ -7,14 +8,18 @@ import (
 	"net/http"
 )
 
+// UnsupportedContentTypeCode константа для обозначения ошибки несоответствия типа содержимого.
 const (
 	UnsupportedContentTypeCode = "UnsupportedContentTypeCode"
 )
 
+// ModelParameter тип-ограничение для обобщенной функции DecodeJSONRequest, позволяющее передавать любую модель.
 type ModelParameter interface {
 	interface{} | []interface{}
 }
 
+// DecodeJSONRequest декодирует JSON из HTTP-запроса в указанную модель.
+// Возвращает декодированную модель или ошибку, если содержимое запроса не соответствует ожидаемому.
 func DecodeJSONRequest[Model ModelParameter](r *http.Request) (Model, error) {
 	var emptyResult Model
 

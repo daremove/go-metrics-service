@@ -1,3 +1,4 @@
+// Пакет logger предназначен для логирования HTTP запросов и ответов.
 package logger
 
 import (
@@ -7,35 +8,37 @@ import (
 	"go.uber.org/zap"
 )
 
-type (
-	responseData struct {
-		status int
-		size   int
-	}
+// responseData содержит данные о HTTP ответе.
+type responseData struct {
+	status int // HTTP статус код ответа
+	size   int // Размер ответа в байтах
+}
 
-	loggingResponseWriter struct {
-		http.ResponseWriter
-		responseData *responseData
-	}
-)
+// loggingResponseWriter реализует интерфейс http.ResponseWriter для перехвата и логирования ответов.
+type loggingResponseWriter struct {
+	http.ResponseWriter               // Встроенный http.ResponseWriter
+	responseData        *responseData // Ссылка на данные о ответе
+}
 
+// Write переопределяет метод Write интерфейса http.ResponseWriter для подсчета размера данных.
 func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	size, err := r.ResponseWriter.Write(b)
 	r.responseData.size += size
-
 	return size, err
 }
 
+// WriteHeader переопределяет метод WriteHeader интерфейса http.ResponseWriter для записи статус кода.
 func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 	r.responseData.status = statusCode
 }
 
-var Log *zap.Logger = zap.NewNop()
+// Log предоставляет глобальный доступ к логгеру zap.Logger.
+var Log = zap.NewNop()
 
+// Initialize инициализирует логгер с указанным уровнем логирования.
 func Initialize(level string) error {
 	lvl, err := zap.ParseAtomicLevel(level)
-
 	if err != nil {
 		return err
 	}
@@ -53,6 +56,7 @@ func Initialize(level string) error {
 	return nil
 }
 
+// RequestLogger является middleware для логирования HTTP запросов и ответов.
 func RequestLogger(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

@@ -1,21 +1,27 @@
+// Пакет stats предоставляет функции для чтения системной статистики,
+// такой как использование CPU, диск и статистика памяти.
 package stats
 
 import (
 	"fmt"
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/disk"
 	"math/rand"
 	"runtime"
+
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/disk"
 )
 
+// Stats содержит внутренние данные для отслеживания количества запросов.
 type Stats struct {
-	pollCount int
+	pollCount int // Количество запросов к статистике.
 }
 
+// New создает и возвращает новый экземпляр Stats.
 func New() *Stats {
 	return &Stats{pollCount: 0}
 }
 
+// Read возвращает основные метрики памяти и системные параметры.
 func (s *Stats) Read() map[string]float64 {
 	stats := runtime.MemStats{}
 
@@ -55,6 +61,7 @@ func (s *Stats) Read() map[string]float64 {
 	}
 }
 
+// ReadGopsUtil читает и возвращает статистику использования CPU и диска через библиотеку gopsutil.
 func (s *Stats) ReadGopsUtil() (map[string]float64, error) {
 	cpuPercents, err := cpu.Percent(0, true)
 

@@ -1,13 +1,17 @@
+// Пакет gzipm предоставляет middleware для обработки сжатых gzip запросов.
 package gzipm
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/utils"
 	"go.uber.org/zap"
-	"net/http"
-	"strings"
 )
 
+// GzipMiddleware является middleware, который проверяет, сжат ли запрос в формате gzip,
+// и если это так, распаковывает его перед передачей в следующий обработчик.
 func GzipMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentEncodingHeader := r.Header.Get("Content-Encoding")

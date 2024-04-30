@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"sync"
+	"time"
+
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
 	"github.com/daremove/go-metrics-service/internal/utils"
-	"log"
-	"sync"
-	"time"
 )
 
 type Job struct {
@@ -34,13 +35,13 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 		case d := <-jobs:
 			payloadItem := models.Metrics{
 				ID:    d.metricName,
-				MType: "gauge",
+				MType: models.GaugeMetricType,
 			}
 
 			if metrics.IsCounterMetricType(d.metricName) {
 				value := int64(d.metricValue)
 
-				payloadItem.MType = "counter"
+				payloadItem.MType = models.CounterMetricType
 				payloadItem.Delta = &value
 			} else {
 				value := d.metricValue

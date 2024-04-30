@@ -1,16 +1,20 @@
+// Пакет memstorage предоставляет реализацию хранилища в памяти для метрик.
 package memstorage
 
 import (
 	"context"
+
 	"github.com/daremove/go-metrics-service/internal/storage"
 )
 
+// MemStorage реализует интерфейс Storage, предоставляя операции с метриками, хранящимися в памяти.
 type MemStorage struct {
-	gauge   map[string]float64
-	counter map[string]int64
+	gauge   map[string]float64 // Хранение метрик типа gauge
+	counter map[string]int64   // Хранение метрик типа counter
 }
 
-func (s *MemStorage) GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error) {
+// GetGaugeMetric извлекает метрику типа gauge по ключу.
+func (s *MemStorage) GetGaugeMetric(_ context.Context, key string) (storage.GaugeMetric, error) {
 	value, ok := s.gauge[key]
 
 	if !ok {
@@ -20,8 +24,9 @@ func (s *MemStorage) GetGaugeMetric(ctx context.Context, key string) (storage.Ga
 	return storage.GaugeMetric{Name: key, Value: value}, nil
 }
 
-func (s *MemStorage) GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error) {
-	var data []storage.GaugeMetric
+// GetGaugeMetrics возвращает все метрики типа gauge.
+func (s *MemStorage) GetGaugeMetrics(_ context.Context) ([]storage.GaugeMetric, error) {
+	data := make([]storage.GaugeMetric, 0, len(s.gauge))
 
 	for key, value := range s.gauge {
 		data = append(data, storage.GaugeMetric{Name: key, Value: value})
@@ -30,7 +35,8 @@ func (s *MemStorage) GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric
 	return data, nil
 }
 
-func (s *MemStorage) GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error) {
+// GetCounterMetric извлекает метрику типа counter по ключу.
+func (s *MemStorage) GetCounterMetric(_ context.Context, key string) (storage.CounterMetric, error) {
 	value, ok := s.counter[key]
 
 	if !ok {
@@ -40,8 +46,9 @@ func (s *MemStorage) GetCounterMetric(ctx context.Context, key string) (storage.
 	return storage.CounterMetric{Name: key, Value: value}, nil
 }
 
-func (s *MemStorage) GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error) {
-	var data []storage.CounterMetric
+// GetCounterMetrics возвращает все метрики типа counter.
+func (s *MemStorage) GetCounterMetrics(_ context.Context) ([]storage.CounterMetric, error) {
+	data := make([]storage.CounterMetric, 0, len(s.counter))
 
 	for key, value := range s.counter {
 		data = append(data, storage.CounterMetric{Name: key, Value: value})
@@ -50,18 +57,21 @@ func (s *MemStorage) GetCounterMetrics(ctx context.Context) ([]storage.CounterMe
 	return data, nil
 }
 
-func (s *MemStorage) AddGaugeMetric(ctx context.Context, key string, value float64) error {
+// AddGaugeMetric добавляет или обновляет метрику типа gauge.
+func (s *MemStorage) AddGaugeMetric(_ context.Context, key string, value float64) error {
 	s.gauge[key] = value
 
 	return nil
 }
 
-func (s *MemStorage) AddCounterMetric(ctx context.Context, key string, value int64) error {
+// AddCounterMetric добавляет или инкрементирует метрику типа counter.
+func (s *MemStorage) AddCounterMetric(_ context.Context, key string, value int64) error {
 	s.counter[key] += value
 
 	return nil
 }
 
+// AddMetrics добавляет набор метрик типа gauge и counter.
 func (s *MemStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error {
 	for _, gaugeMetric := range gaugeMetrics {
 		if err := s.AddGaugeMetric(ctx, gaugeMetric.Name, gaugeMetric.Value); err != nil {
@@ -78,10 +88,12 @@ func (s *MemStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.Gaug
 	return nil
 }
 
+// New создает новый экземпляр MemStorage с пустыми картами для метрик.
 func New() *MemStorage {
 	return &MemStorage{gauge: map[string]float64{}, counter: map[string]int64{}}
 }
 
+// NewWithPrefilledData создает новый экземпляр MemStorage с предварительно заполненными данными.
 func NewWithPrefilledData(gauge map[string]float64, counter map[string]int64) *MemStorage {
 	return &MemStorage{gauge, counter}
 }

@@ -2,12 +2,13 @@ package metrics
 
 import (
 	"context"
+	"testing"
+
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestMetrics_Save(t *testing.T) {
@@ -31,7 +32,7 @@ func TestMetrics_Save(t *testing.T) {
 		{
 			testName: "Should return error if value of gauge metric type wasn't parsed correctly",
 			saveParameters: services.MetricSaveParameters{
-				MetricType:  "gauge",
+				MetricType:  models.GaugeMetricType,
 				MetricName:  "metricName",
 				MetricValue: "string",
 			},
@@ -42,7 +43,7 @@ func TestMetrics_Save(t *testing.T) {
 		{
 			testName: "Should return error if value of counter metric type wasn't parsed correctly",
 			saveParameters: services.MetricSaveParameters{
-				MetricType:  "counter",
+				MetricType:  models.CounterMetricType,
 				MetricName:  "metricName",
 				MetricValue: "1.1",
 			},
@@ -53,7 +54,7 @@ func TestMetrics_Save(t *testing.T) {
 		{
 			testName: "Should save in storage gauge metric type",
 			saveParameters: services.MetricSaveParameters{
-				MetricType:  "gauge",
+				MetricType:  models.GaugeMetricType,
 				MetricName:  "metricName",
 				MetricValue: "1.1",
 			},
@@ -68,7 +69,7 @@ func TestMetrics_Save(t *testing.T) {
 		{
 			testName: "Should save in storage counter metric type",
 			saveParameters: services.MetricSaveParameters{
-				MetricType:  "counter",
+				MetricType:  models.CounterMetricType,
 				MetricName:  "metricName",
 				MetricValue: "100",
 			},
@@ -116,7 +117,7 @@ func TestMetrics_SaveModel(t *testing.T) {
 			testName: "Should save in storage gauge metric type",
 			saveParameters: models.Metrics{
 				ID:    "metricName",
-				MType: "gauge",
+				MType: models.GaugeMetricType,
 				Value: &valueMock,
 			},
 			testCase: func(t *testing.T, err error) {
@@ -131,7 +132,7 @@ func TestMetrics_SaveModel(t *testing.T) {
 			testName: "Should save in storage counter metric type",
 			saveParameters: models.Metrics{
 				ID:    "metricName",
-				MType: "counter",
+				MType: models.CounterMetricType,
 				Delta: &deltaMock,
 			},
 			testCase: func(t *testing.T, err error) {
@@ -181,12 +182,12 @@ func TestMetrics_SaveModels(t *testing.T) {
 			saveParameters: []models.Metrics{
 				{
 					ID:    "gaugeMetricName",
-					MType: "gauge",
+					MType: models.GaugeMetricType,
 					Value: &valueMock,
 				},
 				{
 					ID:    "counterMetricName",
-					MType: "counter",
+					MType: models.CounterMetricType,
 					Delta: &deltaMock,
 				},
 			},
@@ -237,7 +238,7 @@ func TestMetrics_Get(t *testing.T) {
 		{
 			testName: "Should return gauge metricType value",
 			getParameters: services.MetricGetParameters{
-				MetricType: "gauge",
+				MetricType: models.GaugeMetricType,
 				MetricName: "first",
 			},
 			expectedValue: "1.1",
@@ -246,7 +247,7 @@ func TestMetrics_Get(t *testing.T) {
 		{
 			testName: "Should return counter metricType value",
 			getParameters: services.MetricGetParameters{
-				MetricType: "counter",
+				MetricType: models.CounterMetricType,
 				MetricName: "second",
 			},
 			expectedValue: "1",
@@ -288,11 +289,11 @@ func TestMetrics_GetModel(t *testing.T) {
 		{
 			testName: "Should return gauge metricType value",
 			getParameters: models.Metrics{
-				MType: "gauge",
+				MType: models.GaugeMetricType,
 				ID:    "first",
 			},
 			expectedValue: models.Metrics{
-				MType: "gauge",
+				MType: models.GaugeMetricType,
 				ID:    "first",
 				Value: &valueMock,
 			},
@@ -301,11 +302,11 @@ func TestMetrics_GetModel(t *testing.T) {
 		{
 			testName: "Should return counter metricType value",
 			getParameters: models.Metrics{
-				MType: "counter",
+				MType: models.CounterMetricType,
 				ID:    "second",
 			},
 			expectedValue: models.Metrics{
-				MType: "counter",
+				MType: models.CounterMetricType,
 				ID:    "second",
 				Delta: &deltaMock,
 			},

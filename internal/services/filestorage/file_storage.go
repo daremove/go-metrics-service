@@ -1,27 +1,32 @@
+// Пакет filestorage предоставляет реализацию хранилища данных, использующего файловую систему для сохранения и восстановления метрик.
 package filestorage
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/storage"
 	"go.uber.org/zap"
-	"os"
-	"time"
 )
 
+// backupFile структура для сериализации и десериализации данных метрик в файл.
 type backupFile struct {
 	Counters []storage.CounterMetric `json:"counters"`
 	Gauges   []storage.GaugeMetric   `json:"gauges"`
 }
 
+// FileStorage реализует интерфейс Storage, предоставляя методы для работы с метриками, хранящимися в файле.
 type FileStorage struct {
 	Storage
-	storage Storage
-	config  Config
+	storage Storage // Внутреннее хранилище для делегирования операций
+	config  Config  // Конфигурация хранилища
 }
 
+// Storage интерфейс определяет методы, которые должны быть реализованы для работы с метриками.
 type Storage interface {
 	GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error)
 	GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error)
@@ -35,12 +40,14 @@ type Storage interface {
 	AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error
 }
 
+// Config структура конфигурации FileStorage.
 type Config struct {
-	StoreInterval   int
-	FileStoragePath string
-	Restore         bool
+	StoreInterval   int    // Интервал автоматического сохранения данных в файл
+	FileStoragePath string // Путь к файлу хранения данных
+	Restore         bool   // Флаг, указывающий на необходимость восстановления данных из файла при инициализации
 }
 
+// AddGaugeMetric добавляет значение типа gauge в хранилище и выполняет бэкап данных при необходимости.
 func (fs FileStorage) AddGaugeMetric(ctx context.Context, key string, value float64) error {
 	if err := fs.storage.AddGaugeMetric(ctx, key, value); err != nil {
 		return err
@@ -57,6 +64,7 @@ func (fs FileStorage) AddGaugeMetric(ctx context.Context, key string, value floa
 	return nil
 }
 
+// AddCounterMetric добавляет значение типа counter в хранилище и выполняет бэкап данных при необходимости.
 func (fs FileStorage) AddCounterMetric(ctx context.Context, key string, value int64) error {
 	if err := fs.storage.AddCounterMetric(ctx, key, value); err != nil {
 		return err
@@ -73,6 +81,7 @@ func (fs FileStorage) AddCounterMetric(ctx context.Context, key string, value in
 	return nil
 }
 
+// AddMetrics добавляет несколько метрик в хранилище и выполняет бэкап данных при необходимости.
 func (fs FileStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.GaugeMetric, counterMetrics []storage.CounterMetric) error {
 	if err := fs.storage.AddMetrics(ctx, gaugeMetrics, counterMetrics); err != nil {
 		return err
@@ -89,15 +98,22 @@ func (fs FileStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.Gau
 	return nil
 }
 
+// GetGaugeMetric извлекает метрику типа gauge из хранилища.
 func (fs FileStorage) GetGaugeMetric(ctx context.Context, key string) (storage.GaugeMetric, error) {
 	return fs.storage.GetGaugeMetric(ctx, key)
 }
+
+// GetGaugeMetrics извлекает все метрики типа gauge из хранилища.
 func (fs FileStorage) GetGaugeMetrics(ctx context.Context) ([]storage.GaugeMetric, error) {
 	return fs.storage.GetGaugeMetrics(ctx)
 }
+
+// GetCounterMetric извлекает метрику типа counter из хранилища.
 func (fs FileStorage) GetCounterMetric(ctx context.Context, key string) (storage.CounterMetric, error) {
 	return fs.storage.GetCounterMetric(ctx, key)
 }
+
+// GetCounterMetrics извлекает все метрики типа counter из хранилища.
 func (fs FileStorage) GetCounterMetrics(ctx context.Context) ([]storage.CounterMetric, error) {
 	return fs.storage.GetCounterMetrics(ctx)
 }
@@ -131,6 +147,7 @@ func backupData(ctx context.Context, fs Storage, filePath string) error {
 	return nil
 }
 
+// New создает новый экземпляр FileStorage.
 func New(ctx context.Context, storage Storage, config Config) (*FileStorage, error) {
 	fileStorage := &FileStorage{
 		storage: storage,
@@ -184,6 +201,7 @@ func New(ctx context.Context, storage Storage, config Config) (*FileStorage, err
 	return fileStorage, nil
 }
 
+// BackupData выполняет бэкап всех данных в файл.
 func (fs FileStorage) BackupData(ctx context.Context) error {
 	return backupData(ctx, fs.storage, fs.config.FileStoragePath)
 }
