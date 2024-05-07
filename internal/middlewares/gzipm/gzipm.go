@@ -1,4 +1,4 @@
-// Пакет gzipm предоставляет middleware для обработки сжатых gzip запросов.
+// Package gzipm предоставляет middleware для обработки сжатых gzip запросов.
 package gzipm
 
 import (

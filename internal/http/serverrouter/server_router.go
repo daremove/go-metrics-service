@@ -1,4 +1,4 @@
-// Пакет serverrouter предназначен для настройки маршрутизации API на сервере.
+// Package serverrouter предназначен для настройки маршрутизации API на сервере.
 package serverrouter
 
 import (
@@ -10,12 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/daremove/go-metrics-service/internal/middlewares/profiler"
 	"io"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/daremove/go-metrics-service/internal/middlewares/profiler"
 
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/middlewares/dataintergity"
@@ -347,10 +348,10 @@ func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig
 	req.Header.Set("Content-Encoding", "gzip")
 
 	if config.SigningKey != "" {
-		signedBody, err := utils.SignData(body, config.SigningKey)
+		signedBody, signingErr := utils.SignData(body, config.SigningKey)
 
-		if err != nil {
-			return fmt.Errorf("failed to sign data: %w", err)
+		if signingErr != nil {
+			return fmt.Errorf("failed to sign data: %w", signingErr)
 		}
 
 		req.Header.Set(dataintergity.HeaderKeyHash, hex.EncodeToString(signedBody))
