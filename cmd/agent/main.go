@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
@@ -62,6 +63,11 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 	}
 }
 
+var (
+	cpuProvider  = &stats.RealCPUUsageProvider{}
+	diskProvider = &stats.RealDiskUsageProvider{}
+)
+
 func startReadMetrics(ctx context.Context, wg *sync.WaitGroup, config Config) chan Job {
 	jobsCh := make(chan Job, 100)
 
@@ -73,7 +79,7 @@ func startReadMetrics(ctx context.Context, wg *sync.WaitGroup, config Config) ch
 
 		var (
 			ticker       = time.NewTicker(time.Duration(config.pollInterval) * time.Second)
-			statsService = stats.New()
+			statsService = stats.New(cpuProvider, diskProvider)
 		)
 		defer ticker.Stop()
 

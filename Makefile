@@ -3,7 +3,7 @@
 SERVER_SOURCE_PATH=./cmd/server
 AGENT_SOURCE_PATH=./cmd/agent
 
-VERSION_PATH=github.com/daremove/go-metrics-service/internal/utils
+VERSION_PATH=github.com/daremove/go-metrics-service/cmd/buildversion
 VERSION=0.0.1
 
 build:
