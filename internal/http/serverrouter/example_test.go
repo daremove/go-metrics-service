@@ -2,12 +2,13 @@ package serverrouter
 
 import (
 	"context"
+	"log"
+	"net/http"
+
 	"github.com/daremove/go-metrics-service/internal/services/healthcheck"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/storage/database"
 	"github.com/go-chi/chi/v5"
-	"log"
-	"net/http"
 )
 
 func Example() {

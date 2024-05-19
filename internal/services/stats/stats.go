@@ -1,4 +1,4 @@
-// Пакет stats предоставляет функции для чтения системной статистики,
+// Package stats предоставляет функции для чтения системной статистики,
 // такой как использование CPU, диск и статистика памяти.
 package stats
 
@@ -6,19 +6,47 @@ import (
 	"fmt"
 	"math/rand"
 	"runtime"
+	"time"
 
 	"github.com/shirou/gopsutil/cpu"
+
 	"github.com/shirou/gopsutil/disk"
 )
+
+// CPUUsageProvider определяет интерфейс для получения статистики CPU.
+type CPUUsageProvider interface {
+	Percent(interval time.Duration, percpu bool) ([]float64, error)
+}
+
+// DiskUsageProvider определяет интерфейс для получения статистики диска.
+type DiskUsageProvider interface {
+	Usage(path string) (*disk.UsageStat, error)
+}
+
+// RealCPUUsageProvider предоставляет реальные данные использования CPU.
+type RealCPUUsageProvider struct{}
+
+func (r *RealCPUUsageProvider) Percent(interval time.Duration, percpu bool) ([]float64, error) {
+	return cpu.Percent(interval, percpu)
+}
+
+// RealDiskUsageProvider предоставляет реальные данные использования диска.
+type RealDiskUsageProvider struct{}
+
+func (r *RealDiskUsageProvider) Usage(path string) (*disk.UsageStat, error) {
+	return disk.Usage(path)
+}
 
 // Stats содержит внутренние данные для отслеживания количества запросов.
 type Stats struct {
 	pollCount int // Количество запросов к статистике.
+	cpu       CPUUsageProvider
+	disk      DiskUsageProvider
 }
 
 // New создает и возвращает новый экземпляр Stats.
-func New() *Stats {
-	return &Stats{pollCount: 0}
+func New(cpu CPUUsageProvider, disk DiskUsageProvider) *Stats {
+	return &Stats{pollCount: 0, cpu: cpu, disk: disk}
 }
 
 // Read возвращает основные метрики памяти и системные параметры.
@@ -63,13 +91,13 @@ func (s *Stats) Read() map[string]float64 {
 
 // ReadGopsUtil читает и возвращает статистику использования CPU и диска через библиотеку gopsutil.
 func (s *Stats) ReadGopsUtil() (map[string]float64, error) {
-	cpuPercents, err := cpu.Percent(0, true)
+	cpuPercents, err := s.cpu.Percent(0, true)
 
 	if err != nil {
 		return nil, err
 	}
 
-	usageStat, err := disk.Usage("/")
+	usageStat, err := s.disk.Usage("/")
 
 	if err != nil {
 		return nil, err
