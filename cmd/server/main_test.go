@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
+	"testing"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/services/healthcheck"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestInitializeLogger(t *testing.T) {

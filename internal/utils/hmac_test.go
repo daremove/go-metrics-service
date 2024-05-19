@@ -3,8 +3,9 @@ package utils
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSignData(t *testing.T) {

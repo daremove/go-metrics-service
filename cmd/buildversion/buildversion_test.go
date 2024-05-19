@@ -2,10 +2,11 @@ package buildversion
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBuildVersionOutput(t *testing.T) {

@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/daremove/go-metrics-service/internal/storage"
 	"os"
 	"testing"
+
+	"github.com/daremove/go-metrics-service/internal/storage"
 
 	"github.com/stretchr/testify/assert"
 )

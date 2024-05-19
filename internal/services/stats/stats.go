@@ -4,10 +4,11 @@ package stats
 
 import (
 	"fmt"
-	"github.com/shirou/gopsutil/cpu"
 	"math/rand"
 	"runtime"
 	"time"
+
+	"github.com/shirou/gopsutil/cpu"
 
 	"github.com/shirou/gopsutil/disk"
 )
