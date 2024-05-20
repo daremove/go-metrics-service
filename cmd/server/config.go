@@ -15,6 +15,7 @@ type Config struct {
 	dsn             string
 	logLevel        string
 	signingKey      string
+	cryptoKey       string
 }
 
 func NewConfig() Config {
@@ -26,6 +27,7 @@ func NewConfig() Config {
 		dsn             string
 		logLevel        string
 		signingKey      string
+		cryptoKey       string
 	)
 
 	flag.StringVar(&endpoint, "a", "localhost:8080", "address and port to run server")
@@ -34,6 +36,7 @@ func NewConfig() Config {
 	flag.BoolVar(&restore, "r", true, "should server restore data from storage file")
 	flag.StringVar(&dsn, "d", "", "data source name for database connection")
 	flag.StringVar(&signingKey, "k", "", "data signing key")
+	flag.StringVar(&cryptoKey, "crypto-key", "cmd/server/private_key_test.pem", "path to the encryption key")
 	flag.Parse()
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -78,6 +81,10 @@ func NewConfig() Config {
 		signingKey = signingKeyEnv
 	}
 
+	if cryptoKeyEnv := os.Getenv("CRYPTO_KEY"); cryptoKeyEnv != "" {
+		cryptoKey = cryptoKeyEnv
+	}
+
 	return Config{
 		endpoint,
 		storeInterval,
@@ -86,5 +93,6 @@ func NewConfig() Config {
 		dsn,
 		logLevel,
 		signingKey,
+		cryptoKey,
 	}
 }

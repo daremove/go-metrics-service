@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/daremove/go-metrics-service/internal/utils"
+
 	"github.com/daremove/go-metrics-service/internal/services/healthcheck"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/storage/database"
@@ -26,7 +28,7 @@ func Example() {
 
 	router.Post("/update/{metricType}/{metricName}/{metricValue}", updateMetricHandler(ctx, metricsService))
 	router.Post("/update", updateMetricWithJSONHandler(ctx, metricsService))
-	router.Post("/updates", updateMetricsHandler(ctx, metricsService))
+	router.Post("/updates", utils.DecryptMiddleware(nil)(updateMetricsHandler(ctx, metricsService)))
 
 	router.Get("/value/{metricType}/{metricName}", getMetricValueHandler(ctx, metricsService))
 	router.Post("/value", getMetricValueWithJSONHandler(ctx, metricsService))

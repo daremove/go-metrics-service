@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"log"
 	"sync"
@@ -20,7 +21,7 @@ type Job struct {
 	metricValue float64
 }
 
-func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config) {
+func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config, publicKey *rsa.PublicKey) {
 	defer wg.Done()
 
 	var (
@@ -54,6 +55,7 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 			if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
 				URL:        fmt.Sprintf("http://%s", config.endpoint),
 				SigningKey: config.signingKey,
+				PublicKey:  publicKey,
 			}); err != nil {
 				log.Printf("failed to send metric data: %s", err)
 			} else {
@@ -123,6 +125,12 @@ func main() {
 		jobsCh = startReadMetrics(ctx, &wg, config)
 	)
 
+	pubicKey, err := utils.LoadPublicKey(config.cryptoKey)
+
+	if err != nil {
+		log.Fatalf("Crypto key wasn't loaded due to %s", err)
+	}
+
 	log.Printf(
 		"Starting read stats data every %v and send it every %v to %s",
 		time.Duration(config.pollInterval)*time.Second,
@@ -132,7 +140,7 @@ func main() {
 
 	for i := 0; i < int(config.rateLimit); i++ {
 		wg.Add(1)
-		go jobWorker(ctx, &wg, jobsCh, config)
+		go jobWorker(ctx, &wg, jobsCh, config, pubicKey)
 	}
 
 	wg.Wait()

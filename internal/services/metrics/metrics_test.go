@@ -335,3 +335,13 @@ func TestMetrics_GetModel(t *testing.T) {
 		})
 	}
 }
+
+func TestMetrics_IsCounterMetricType(t *testing.T) {
+	t.Run("Should return true if metric name is counter metric type", func(t *testing.T) {
+		assert.True(t, IsCounterMetricType("PollCount"))
+	})
+
+	t.Run("Should return false if metric name isn't counter metric type", func(t *testing.T) {
+		assert.False(t, IsCounterMetricType("MetricName"))
+	})
+}

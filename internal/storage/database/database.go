@@ -7,6 +7,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/daremove/go-metrics-service/internal/storage"
 	_ "github.com/golang-migrate/migrate/source/file"
 	"github.com/jackc/pgx/v5"
@@ -31,13 +33,21 @@ const (
 	`
 )
 
+type DB interface {
+	Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...interface{}) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...interface{}) pgx.Row
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+	Ping(context.Context) error
+}
+
 // Database структура для взаимодействия с базой данных.
 type Database struct {
-	db *pgxpool.Pool
+	db DB
 }
 
 // checkConnection проверяет соединение с базой данных.
-func checkConnection(ctx context.Context, db *pgxpool.Pool) error {
+func checkConnection(ctx context.Context, db DB) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*2)
 	defer cancel()
 

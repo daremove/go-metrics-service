@@ -60,3 +60,27 @@ func TestStats(t *testing.T) {
 		assert.Equal(t, 30.7, metrics["CPUutilization2"])
 	})
 }
+
+func TestStats_RealCPUUsageProvider(t *testing.T) {
+	t.Run("Should return data about CPU usage", func(t *testing.T) {
+		var data interface{}
+		data, err := (&RealCPUUsageProvider{}).Percent(0, true)
+
+		assert.NoError(t, err)
+		_, ok := data.([]float64)
+
+		assert.True(t, ok)
+	})
+}
+
+func TestStats_RealDiskUsageProvider(t *testing.T) {
+	t.Run("Should return data about disk usage", func(t *testing.T) {
+		var data interface{}
+		data, err := (&RealDiskUsageProvider{}).Usage("/")
+
+		assert.NoError(t, err)
+		_, ok := data.(*disk.UsageStat)
+
+		assert.True(t, ok)
+	})
+}

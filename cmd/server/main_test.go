@@ -54,7 +54,7 @@ func TestRunServer(t *testing.T) {
 		healthCheckService := healthcheck.New(nil)
 
 		go func() {
-			runServer(ctx, config, storage, healthCheckService)
+			runServer(ctx, config, storage, healthCheckService, nil)
 		}()
 
 		cancel()

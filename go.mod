@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/go-chi/chi/v5 v5.0.11
 	github.com/golang-migrate/migrate v3.5.4+incompatible
-	github.com/jackc/pgx/v5 v5.5.3
+	github.com/jackc/pgx/v5 v5.5.5
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"log"
 
 	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
@@ -56,11 +57,12 @@ func initializeStorage(ctx context.Context, config Config) (metrics.Storage, *he
 	return storage, healthCheckService, nil
 }
 
-func runServer(ctx context.Context, config Config, storage metrics.Storage, healthCheckService *healthcheck.HealthCheck) {
+func runServer(ctx context.Context, config Config, storage metrics.Storage, healthCheckService *healthcheck.HealthCheck, privateKey *rsa.PrivateKey) {
 	metricsService := metrics.New(storage)
 	router := serverrouter.New(metricsService, healthCheckService, serverrouter.RouterConfig{
 		Endpoint:   config.endpoint,
 		SigningKey: config.signingKey,
+		PrivateKey: privateKey,
 	})
 
 	log.Printf("Running server on %s\n", config.endpoint)
@@ -72,14 +74,21 @@ func main() {
 	ctx := context.Background()
 	config := NewConfig()
 
+	privateKey, privateKeyErr := utils.LoadPrivateKey(config.cryptoKey)
+
+	if privateKeyErr != nil {
+		log.Fatalf("Private key wasn't loaded due to %s", privateKeyErr)
+	}
+
 	if err := initializeLogger(config.logLevel); err != nil {
 		log.Fatalf("Logger wasn't initialized due to %s", err)
 	}
 
 	storage, healthCheckService, err := initializeStorage(ctx, config)
+
 	if err != nil {
 		log.Fatalf("Storage wasn't initialized due to %s", err)
 	}
 
-	runServer(ctx, config, storage, healthCheckService)
+	runServer(ctx, config, storage, healthCheckService, privateKey)
 }

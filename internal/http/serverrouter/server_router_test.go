@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,6 +22,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var publicKey, privateKey = readRSAKeysFromFile()
+
+func readRSAKeysFromFile() (*rsa.PublicKey, *rsa.PrivateKey) {
+	pubKey, err := utils.LoadPublicKey("../../../cmd/agent/public_key_test.pem")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	privKey, err := utils.LoadPrivateKey("../../../cmd/server/private_key_test.pem")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return pubKey, privKey
+}
 
 func TestSendMetricData(t *testing.T) {
 	createServer := func(assertFn func(request *http.Request)) *httptest.Server {
@@ -64,9 +85,9 @@ func TestSendMetricModelData(t *testing.T) {
 	var deltaMock int64 = 1
 	var valueMock = 2.5
 
-	createServer := func(assertFn func(request *http.Request)) *httptest.Server {
-		return httptest.NewServer(gzipm.GzipMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			assertFn(r)
+	createServer := func(assertFn func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
+		return httptest.NewServer(gzipm.GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assertFn(w, r)
 		})))
 	}
 	testCases := []struct {
@@ -76,29 +97,33 @@ func TestSendMetricModelData(t *testing.T) {
 	}{
 		{
 			testName: "Should send request with correct body",
-			testServer: createServer(func(r *http.Request) {
-				data, err := utils.DecodeJSONRequest[[]models.Metrics](r)
+			testServer: createServer(func(w http.ResponseWriter, r *http.Request) {
+				utils.DecryptMiddleware(privateKey)(func(_ http.ResponseWriter, r *http.Request) {
+					data, err := utils.DecodeJSONRequest[[]models.Metrics](r)
 
-				require.NoError(t, err)
-				assert.Equal(t, data, []models.Metrics{
-					{
-						ID:    "metricName",
-						MType: "metricType",
-						Delta: &deltaMock,
-						Value: &valueMock,
-					},
+					fmt.Println("data", data, err)
+
+					require.NoError(t, err)
+					assert.Equal(t, data, []models.Metrics{
+						{
+							ID:    "metricName",
+							MType: "metricType",
+							Delta: &deltaMock,
+							Value: &valueMock,
+						},
+					})
 				})
 			}),
 		},
 		{
 			testName: "Should send request with correct http method",
-			testServer: createServer(func(r *http.Request) {
+			testServer: createServer(func(_ http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "POST", r.Method)
 			}),
 		},
 		{
 			testName: "Shouldn't sign data if signing key wasn't provided",
-			testServer: createServer(func(r *http.Request) {
+			testServer: createServer(func(_ http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "POST", r.Method)
 				assert.Equal(t, "", r.Header.Get(dataintergity.HeaderKeyHash))
 			}),
@@ -106,9 +131,9 @@ func TestSendMetricModelData(t *testing.T) {
 		{
 			testName:   "Should sign data if signing key was provided",
 			signingKey: "secret",
-			testServer: createServer(func(r *http.Request) {
+			testServer: createServer(func(_ http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "POST", r.Method)
-				assert.Equal(t, "0d4c588ae2a9e2bc7f5e25b64b16c9f531a1e8a8252b40a4ab98152731026f3a", r.Header.Get(dataintergity.HeaderKeyHash))
+				assert.Equal(t, "182b6cf5ae68b188e505436870025da0fd1553f916d5f978cf4204e4836eb8c9", r.Header.Get(dataintergity.HeaderKeyHash))
 			}),
 		},
 	}
@@ -127,6 +152,7 @@ func TestSendMetricModelData(t *testing.T) {
 			}, SendMetricModelDataConfig{
 				URL:        tc.testServer.URL,
 				SigningKey: tc.signingKey,
+				PublicKey:  publicKey,
 			})
 
 			assert.NoError(t, err)
@@ -294,13 +320,14 @@ func TestServerRouterJson(t *testing.T) {
 		{ID: "counter_test", MType: models.CounterMetricType, Delta: &deltaMock},
 		{ID: "gauge_test", MType: models.GaugeMetricType, Value: &valueMock},
 	})
+	modelDataMock, _ = utils.EncryptWithPublicKey(modelDataMock, publicKey)
 
 	testServer := httptest.NewServer(
 		New(metricsServiceMock{
 			modelData: map[string]models.Metrics{
 				"gauge_test": {ID: "test", MType: models.GaugeMetricType, Value: &valueMock},
 			},
-		}, healthCheckServiceMock{}, RouterConfig{}).Get(context.TODO()),
+		}, healthCheckServiceMock{}, RouterConfig{PrivateKey: privateKey}).Get(context.TODO()),
 	)
 	defer testServer.Close()
 
