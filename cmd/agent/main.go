@@ -5,7 +5,10 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
@@ -33,6 +36,34 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 	for {
 		select {
 		case <-ctx.Done():
+			for d := range jobs {
+				payloadItem := models.Metrics{
+					ID:    d.metricName,
+					MType: models.GaugeMetricType,
+				}
+
+				if metrics.IsCounterMetricType(d.metricName) {
+					value := int64(d.metricValue)
+
+					payloadItem.MType = models.CounterMetricType
+					payloadItem.Delta = &value
+				} else {
+					value := d.metricValue
+					payloadItem.Value = &value
+				}
+
+				payload = append(payload, payloadItem)
+			}
+
+			if len(payload) > 0 {
+				if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
+					URL:        fmt.Sprintf("http://%s", config.Endpoint),
+					SigningKey: config.SigningKey,
+					PublicKey:  publicKey,
+				}); err != nil {
+					log.Printf("failed to send metric data: %s", err)
+				}
+			}
 			return
 		case d := <-jobs:
 			payloadItem := models.Metrics{
@@ -119,6 +150,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
 	var (
 		config = NewConfig()
 		wg     sync.WaitGroup
@@ -143,5 +177,10 @@ func main() {
 		go jobWorker(ctx, &wg, jobsCh, config, pubicKey)
 	}
 
+	<-stop
+	log.Println("Shutting down the agent...")
+
+	cancel()
 	wg.Wait()
+	log.Println("Agent stopped gracefully.")
 }

@@ -4,6 +4,10 @@ import (
 	"context"
 	"crypto/rsa"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
@@ -57,7 +61,7 @@ func initializeStorage(ctx context.Context, config Config) (metrics.Storage, *he
 	return storage, healthCheckService, nil
 }
 
-func runServer(ctx context.Context, config Config, storage metrics.Storage, healthCheckService *healthcheck.HealthCheck, privateKey *rsa.PrivateKey) {
+func runServer(ctx context.Context, config Config, storage metrics.Storage, healthCheckService *healthcheck.HealthCheck, privateKey *rsa.PrivateKey) *http.Server {
 	metricsService := metrics.New(storage)
 	router := serverrouter.New(metricsService, healthCheckService, serverrouter.RouterConfig{
 		Endpoint:   config.Endpoint,
@@ -65,9 +69,20 @@ func runServer(ctx context.Context, config Config, storage metrics.Storage, heal
 		PrivateKey: privateKey,
 	})
 
-	log.Printf("Running server on %s\n", config.Endpoint)
+	server := &http.Server{
+		Addr:    config.Endpoint,
+		Handler: router.Get(ctx),
+	}
 
-	router.Run(ctx)
+	go func() {
+		log.Printf("Running server on %s\n", config.Endpoint)
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Could not listen on %s: %v\n", config.Endpoint, err)
+		}
+	}()
+
+	return server
 }
 
 func main() {
@@ -90,5 +105,18 @@ func main() {
 		log.Fatalf("Storage wasn't initialized due to %s", err)
 	}
 
-	runServer(ctx, config, storage, healthCheckService, privateKey)
+	server := runServer(ctx, config, storage, healthCheckService, privateKey)
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
+	<-stop
+
+	log.Println("Shutting down the server...")
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server stopped gracefully.")
 }

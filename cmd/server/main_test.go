@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/daremove/go-metrics-service/internal/logger"
@@ -25,15 +27,26 @@ func TestInitializeLogger(t *testing.T) {
 }
 
 func TestInitializeStorage(t *testing.T) {
+	FileStoragePath := "/tmp/test-init-storage.json"
+
+	if _, err := os.Stat(FileStoragePath); err == nil {
+		err := os.Remove(FileStoragePath)
+
+		if err != nil {
+			log.Fatalf("Failed to delete file %s: %v", FileStoragePath, err)
+		}
+	}
+
 	t.Run("Should initialize file storage", func(t *testing.T) {
 		ctx := context.Background()
 		config := Config{
 			StoreInterval:   300,
-			FileStoragePath: "/tmp/metrics-db.json",
+			FileStoragePath: FileStoragePath,
 			Restore:         true,
 		}
 
 		storage, healthCheckService, err := initializeStorage(ctx, config)
+
 		require.NoError(t, err)
 		assert.NotNil(t, storage)
 		assert.NotNil(t, healthCheckService)
