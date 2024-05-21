@@ -28,9 +28,9 @@ func TestInitializeStorage(t *testing.T) {
 	t.Run("Should initialize file storage", func(t *testing.T) {
 		ctx := context.Background()
 		config := Config{
-			storeInterval:   300,
-			fileStoragePath: "/tmp/metrics-db.json",
-			restore:         true,
+			StoreInterval:   300,
+			FileStoragePath: "/tmp/metrics-db.json",
+			Restore:         true,
 		}
 
 		storage, healthCheckService, err := initializeStorage(ctx, config)
@@ -46,8 +46,8 @@ func TestRunServer(t *testing.T) {
 		defer cancel()
 
 		config := Config{
-			endpoint:   "localhost:8080",
-			signingKey: "test-signing-key",
+			Endpoint:   "localhost:8080",
+			SigningKey: "test-signing-key",
 		}
 
 		storage := memstorage.New()

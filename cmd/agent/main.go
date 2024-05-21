@@ -25,7 +25,7 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 	defer wg.Done()
 
 	var (
-		ticker  = time.NewTicker(time.Duration(config.reportInterval) * time.Second)
+		ticker  = time.NewTicker(time.Duration(config.ReportInterval) * time.Second)
 		payload []models.Metrics
 	)
 	defer ticker.Stop()
@@ -53,8 +53,8 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 			payload = append(payload, payloadItem)
 		case <-ticker.C:
 			if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
-				URL:        fmt.Sprintf("http://%s", config.endpoint),
-				SigningKey: config.signingKey,
+				URL:        fmt.Sprintf("http://%s", config.Endpoint),
+				SigningKey: config.SigningKey,
 				PublicKey:  publicKey,
 			}); err != nil {
 				log.Printf("failed to send metric data: %s", err)
@@ -80,7 +80,7 @@ func startReadMetrics(ctx context.Context, wg *sync.WaitGroup, config Config) ch
 		defer close(jobsCh)
 
 		var (
-			ticker       = time.NewTicker(time.Duration(config.pollInterval) * time.Second)
+			ticker       = time.NewTicker(time.Duration(config.PollInterval) * time.Second)
 			statsService = stats.New(cpuProvider, diskProvider)
 		)
 		defer ticker.Stop()
@@ -125,7 +125,7 @@ func main() {
 		jobsCh = startReadMetrics(ctx, &wg, config)
 	)
 
-	pubicKey, err := utils.LoadPublicKey(config.cryptoKey)
+	pubicKey, err := utils.LoadPublicKey(config.CryptoKey)
 
 	if err != nil {
 		log.Fatalf("Crypto key wasn't loaded due to %s", err)
@@ -133,12 +133,12 @@ func main() {
 
 	log.Printf(
 		"Starting read stats data every %v and send it every %v to %s",
-		time.Duration(config.pollInterval)*time.Second,
-		time.Duration(config.reportInterval)*time.Second,
-		config.endpoint,
+		time.Duration(config.PollInterval)*time.Second,
+		time.Duration(config.ReportInterval)*time.Second,
+		config.Endpoint,
 	)
 
-	for i := 0; i < int(config.rateLimit); i++ {
+	for i := 0; i < int(config.RateLimit); i++ {
 		wg.Add(1)
 		go jobWorker(ctx, &wg, jobsCh, config, pubicKey)
 	}
