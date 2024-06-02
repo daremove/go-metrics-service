@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/daremove/go-metrics-service/internal/logger"
@@ -25,15 +27,26 @@ func TestInitializeLogger(t *testing.T) {
 }
 
 func TestInitializeStorage(t *testing.T) {
+	FileStoragePath := "/tmp/test-init-storage.json"
+
+	if _, err := os.Stat(FileStoragePath); err == nil {
+		err := os.Remove(FileStoragePath)
+
+		if err != nil {
+			log.Fatalf("Failed to delete file %s: %v", FileStoragePath, err)
+		}
+	}
+
 	t.Run("Should initialize file storage", func(t *testing.T) {
 		ctx := context.Background()
 		config := Config{
-			storeInterval:   300,
-			fileStoragePath: "/tmp/metrics-db.json",
-			restore:         true,
+			StoreInterval:   300,
+			FileStoragePath: FileStoragePath,
+			Restore:         true,
 		}
 
 		storage, healthCheckService, err := initializeStorage(ctx, config)
+
 		require.NoError(t, err)
 		assert.NotNil(t, storage)
 		assert.NotNil(t, healthCheckService)
@@ -46,15 +59,15 @@ func TestRunServer(t *testing.T) {
 		defer cancel()
 
 		config := Config{
-			endpoint:   "localhost:8080",
-			signingKey: "test-signing-key",
+			Endpoint:   "localhost:8080",
+			SigningKey: "test-signing-key",
 		}
 
 		storage := memstorage.New()
 		healthCheckService := healthcheck.New(nil)
 
 		go func() {
-			runServer(ctx, config, storage, healthCheckService)
+			runServer(ctx, config, storage, healthCheckService, nil)
 		}()
 
 		cancel()

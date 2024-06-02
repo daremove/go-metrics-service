@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -8,13 +9,32 @@ import (
 )
 
 type Config struct {
-	endpoint        string
-	storeInterval   int
-	fileStoragePath string
-	restore         bool
-	dsn             string
-	logLevel        string
-	signingKey      string
+	Endpoint        string `json:"address"`
+	StoreInterval   int    `json:"store_interval"`
+	FileStoragePath string `json:"store_file"`
+	Restore         bool   `json:"restore"`
+	Dsn             string `json:"database_dsn"`
+	LogLevel        string
+	SigningKey      string
+	CryptoKey       string `json:"crypto_key"`
+}
+
+func loadConfigFromFile(path string) (Config, error) {
+	file, err := os.Open(path)
+
+	if err != nil {
+		return Config{}, err
+	}
+	defer file.Close()
+
+	var config Config
+	decoder := json.NewDecoder(file)
+
+	if err := decoder.Decode(&config); err != nil {
+		return Config{}, err
+	}
+
+	return config, nil
 }
 
 func NewConfig() Config {
@@ -26,14 +46,18 @@ func NewConfig() Config {
 		dsn             string
 		logLevel        string
 		signingKey      string
+		cryptoKey       string
+		configFile      string
 	)
 
-	flag.StringVar(&endpoint, "a", "localhost:8080", "address and port to run server")
-	flag.IntVar(&storeInterval, "i", 300, "interval of saving data to disk")
-	flag.StringVar(&fileStoragePath, "f", "/tmp/metrics-db.json", "path of storage file")
-	flag.BoolVar(&restore, "r", true, "should server restore data from storage file")
+	flag.StringVar(&endpoint, "a", "", "address and port to run server")
+	flag.IntVar(&storeInterval, "i", 0, "interval of saving data to disk")
+	flag.StringVar(&fileStoragePath, "f", "", "path of storage file")
+	flag.BoolVar(&restore, "r", false, "should server restore data from storage file")
 	flag.StringVar(&dsn, "d", "", "data source name for database connection")
 	flag.StringVar(&signingKey, "k", "", "data signing key")
+	flag.StringVar(&cryptoKey, "crypto-key", "", "path to the encryption key")
+	flag.StringVar(&configFile, "c", "cmd/server/default_config.json", "path to the configuration file")
 	flag.Parse()
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -78,6 +102,46 @@ func NewConfig() Config {
 		signingKey = signingKeyEnv
 	}
 
+	if cryptoKeyEnv := os.Getenv("CRYPTO_KEY"); cryptoKeyEnv != "" {
+		cryptoKey = cryptoKeyEnv
+	}
+
+	if configFileEnv := os.Getenv("CONFIG"); configFileEnv != "" {
+		configFile = configFileEnv
+	}
+
+	if configFile != "" {
+		fileConfig, err := loadConfigFromFile(configFile)
+
+		if err != nil {
+			log.Fatalf("Error loading config file: %v", err)
+		}
+
+		if endpoint == "" {
+			endpoint = fileConfig.Endpoint
+		}
+
+		if storeInterval == 0 {
+			storeInterval = fileConfig.StoreInterval
+		}
+
+		if fileStoragePath == "" {
+			fileStoragePath = fileConfig.FileStoragePath
+		}
+
+		if !restore {
+			restore = fileConfig.Restore
+		}
+
+		if dsn == "" {
+			dsn = fileConfig.Dsn
+		}
+
+		if cryptoKey == "" {
+			cryptoKey = fileConfig.CryptoKey
+		}
+	}
+
 	return Config{
 		endpoint,
 		storeInterval,
@@ -86,5 +150,6 @@ func NewConfig() Config {
 		dsn,
 		logLevel,
 		signingKey,
+		cryptoKey,
 	}
 }

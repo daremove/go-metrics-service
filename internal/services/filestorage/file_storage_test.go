@@ -92,6 +92,153 @@ func (m *MockStorage) AddMetrics(ctx context.Context, gaugeMetrics []storage.Gau
 }
 
 func TestFileStorage(t *testing.T) {
+	t.Run("Should successfully backup data", func(t *testing.T) {
+		mockStorage := &MockStorage{
+			gaugeMetrics: map[string]storage.GaugeMetric{
+				"test_gauge": {
+					Name:  "test_gauge",
+					Value: 123.45,
+				},
+			},
+			counterMetrics: map[string]storage.CounterMetric{
+				"test_counter": {
+					Name:  "test_counter",
+					Value: 678,
+				},
+			},
+		}
+		config := Config{FileStoragePath: "test_backup.json", Restore: false}
+		defer os.Remove(config.FileStoragePath)
+		fs, err := New(context.Background(), mockStorage, config)
+		assert.NoError(t, err)
+		assert.NotNil(t, fs)
+
+		err = fs.BackupData(context.Background())
+		assert.NoError(t, err)
+
+		data, err := os.ReadFile(config.FileStoragePath)
+		assert.NoError(t, err)
+		var backupData backupFile
+		err = json.Unmarshal(data, &backupData)
+		assert.NoError(t, err)
+
+		assert.Len(t, backupData.Gauges, 1)
+		assert.Equal(t, "test_gauge", backupData.Gauges[0].Name)
+		assert.Equal(t, 123.45, backupData.Gauges[0].Value)
+
+		assert.Len(t, backupData.Counters, 1)
+		assert.Equal(t, "test_counter", backupData.Counters[0].Name)
+		assert.Equal(t, int64(678), backupData.Counters[0].Value)
+	})
+
+	t.Run("Should return all counter metrics", func(t *testing.T) {
+		mockStorage := &MockStorage{
+			counterMetrics: map[string]storage.CounterMetric{
+				"test_counter1": {
+					Name:  "test_counter1",
+					Value: 1,
+				},
+				"test_counter2": {
+					Name:  "test_counter2",
+					Value: 2,
+				},
+			},
+		}
+		config := Config{FileStoragePath: "test_counter.json", Restore: false}
+		defer os.Remove(config.FileStoragePath)
+		fs, err := New(context.Background(), mockStorage, config)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, fs)
+
+		data, err := fs.GetCounterMetrics(context.Background())
+
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, []storage.CounterMetric{{Name: "test_counter1", Value: 1}, {Name: "test_counter2", Value: 2}}, data)
+	})
+
+	t.Run("Should return all gauge metrics", func(t *testing.T) {
+		mockStorage := &MockStorage{
+			gaugeMetrics: map[string]storage.GaugeMetric{
+				"test_gauge1": {
+					Name:  "test_gauge1",
+					Value: 1.2,
+				},
+				"test_gauge2": {
+					Name:  "test_gauge2",
+					Value: 3.4,
+				},
+			},
+		}
+		config := Config{FileStoragePath: "test_gauge.json", Restore: false}
+		defer os.Remove(config.FileStoragePath)
+		fs, err := New(context.Background(), mockStorage, config)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, fs)
+
+		data, err := fs.GetGaugeMetrics(context.Background())
+
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, []storage.GaugeMetric{{Name: "test_gauge1", Value: 1.2}, {Name: "test_gauge2", Value: 3.4}}, data)
+	})
+
+	t.Run("Should add a counter metric and backup data", func(t *testing.T) {
+		mockStorage := &MockStorage{
+			gaugeMetrics:   make(map[string]storage.GaugeMetric),
+			counterMetrics: make(map[string]storage.CounterMetric),
+		}
+		config := Config{FileStoragePath: "add_counter.json", Restore: false}
+		defer os.Remove(config.FileStoragePath)
+		fs, err := New(context.Background(), mockStorage, config)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, fs)
+
+		err = fs.AddCounterMetric(context.Background(), "counter", 1)
+		assert.NoError(t, err)
+
+		data, err := os.ReadFile(config.FileStoragePath)
+		assert.NoError(t, err)
+		var backupData backupFile
+		err = json.Unmarshal(data, &backupData)
+		assert.NoError(t, err)
+
+		assert.Len(t, backupData.Counters, 1)
+		assert.Equal(t, "counter", backupData.Counters[0].Name)
+		assert.Equal(t, int64(1), backupData.Counters[0].Value)
+	})
+
+	t.Run("Should add metrics and backup data", func(t *testing.T) {
+		mockStorage := &MockStorage{
+			gaugeMetrics:   make(map[string]storage.GaugeMetric),
+			counterMetrics: make(map[string]storage.CounterMetric),
+		}
+		config := Config{FileStoragePath: "add_metics.json", Restore: false}
+		defer os.Remove(config.FileStoragePath)
+		fs, err := New(context.Background(), mockStorage, config)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, fs)
+
+		err = fs.AddMetrics(context.Background(), []storage.GaugeMetric{{Name: "gauge", Value: 1.23}}, []storage.CounterMetric{{Name: "counter", Value: 456}})
+		assert.NoError(t, err)
+
+		data, err := os.ReadFile(config.FileStoragePath)
+		assert.NoError(t, err)
+		var backupData backupFile
+		err = json.Unmarshal(data, &backupData)
+		assert.NoError(t, err)
+
+		assert.Len(t, backupData.Counters, 1)
+		assert.Equal(t, "counter", backupData.Counters[0].Name)
+		assert.Equal(t, int64(456), backupData.Counters[0].Value)
+
+		assert.Len(t, backupData.Gauges, 1)
+		assert.Equal(t, "gauge", backupData.Gauges[0].Name)
+		assert.Equal(t, 1.23, backupData.Gauges[0].Value)
+	})
+
 	t.Run("Should create a new FileStorage instance", func(t *testing.T) {
 		mockStorage := &MockStorage{
 			gaugeMetrics:   make(map[string]storage.GaugeMetric),

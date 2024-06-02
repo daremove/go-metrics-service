@@ -6,6 +6,7 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"context"
+	"crypto/rsa"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,8 +32,9 @@ import (
 
 // RouterConfig содержит конфигурацию для маршрутизатора сервера.
 type RouterConfig struct {
-	Endpoint   string // URL-адрес конечной точки сервера
-	SigningKey string // Ключ для подписи данных
+	Endpoint   string          // URL-адрес конечной точки сервера
+	SigningKey string          // Ключ для подписи данных
+	PrivateKey *rsa.PrivateKey // Приватный ключ для дешифрования данных
 }
 
 // ServerRouter предоставляет маршрутизацию запросов к сервисам метрик и проверки состояния.
@@ -97,7 +99,7 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 		})
 
 		r.Route("/updates", func(r chi.Router) {
-			r.Post("/", updateMetricsHandler(ctx, router.metricsService))
+			r.Post("/", utils.DecryptMiddleware(router.config.PrivateKey)(updateMetricsHandler(ctx, router.metricsService)))
 		})
 
 		r.Route("/value", func(r chi.Router) {
@@ -308,8 +310,9 @@ func SendMetricData(parameters SendMetricDataParameters) error {
 
 // SendMetricModelDataConfig содержит конфигурацию для отправки модели данных метрик.
 type SendMetricModelDataConfig struct {
-	URL        string // URL-адрес сервера
-	SigningKey string // Ключ для подписи данных
+	URL        string         // URL-адрес сервера
+	SigningKey string         // Ключ для подписи данных
+	PublicKey  *rsa.PublicKey // Публичный ключ для шифрования данных
 }
 
 // SendMetricModelData отправляет модель данных метрик на указанный сервер с возможной подписью данных.
@@ -320,10 +323,28 @@ func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
+	var signedBody []byte
+
+	if config.SigningKey != "" {
+		sb, signingErr := utils.SignData(body, config.SigningKey)
+
+		if signingErr != nil {
+			return fmt.Errorf("failed to sign data: %w", signingErr)
+		}
+
+		signedBody = sb
+	}
+
+	encryptedData, err := utils.EncryptWithPublicKey(body, config.PublicKey)
+
+	if err != nil {
+		return fmt.Errorf("failed to encrypt data: %w", err)
+	}
+
 	var buf bytes.Buffer
 
 	gzipWriter := gzip.NewWriter(&buf)
-	_, err = gzipWriter.Write(body)
+	_, err = gzipWriter.Write(encryptedData)
 
 	if err != nil {
 		return fmt.Errorf("failed to gzip data: %w", err)
@@ -347,13 +368,7 @@ func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Encoding", "gzip")
 
-	if config.SigningKey != "" {
-		signedBody, signingErr := utils.SignData(body, config.SigningKey)
-
-		if signingErr != nil {
-			return fmt.Errorf("failed to sign data: %w", signingErr)
-		}
-
+	if signedBody != nil {
 		req.Header.Set(dataintergity.HeaderKeyHash, hex.EncodeToString(signedBody))
 	}
 

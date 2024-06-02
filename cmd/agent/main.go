@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
@@ -20,11 +24,11 @@ type Job struct {
 	metricValue float64
 }
 
-func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config) {
+func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config, publicKey *rsa.PublicKey) {
 	defer wg.Done()
 
 	var (
-		ticker  = time.NewTicker(time.Duration(config.reportInterval) * time.Second)
+		ticker  = time.NewTicker(time.Duration(config.ReportInterval) * time.Second)
 		payload []models.Metrics
 	)
 	defer ticker.Stop()
@@ -32,6 +36,34 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 	for {
 		select {
 		case <-ctx.Done():
+			for d := range jobs {
+				payloadItem := models.Metrics{
+					ID:    d.metricName,
+					MType: models.GaugeMetricType,
+				}
+
+				if metrics.IsCounterMetricType(d.metricName) {
+					value := int64(d.metricValue)
+
+					payloadItem.MType = models.CounterMetricType
+					payloadItem.Delta = &value
+				} else {
+					value := d.metricValue
+					payloadItem.Value = &value
+				}
+
+				payload = append(payload, payloadItem)
+			}
+
+			if len(payload) > 0 {
+				if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
+					URL:        fmt.Sprintf("http://%s", config.Endpoint),
+					SigningKey: config.SigningKey,
+					PublicKey:  publicKey,
+				}); err != nil {
+					log.Printf("failed to send metric data: %s", err)
+				}
+			}
 			return
 		case d := <-jobs:
 			payloadItem := models.Metrics{
@@ -52,8 +84,9 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 			payload = append(payload, payloadItem)
 		case <-ticker.C:
 			if err := serverrouter.SendMetricModelData(payload, serverrouter.SendMetricModelDataConfig{
-				URL:        fmt.Sprintf("http://%s", config.endpoint),
-				SigningKey: config.signingKey,
+				URL:        fmt.Sprintf("http://%s", config.Endpoint),
+				SigningKey: config.SigningKey,
+				PublicKey:  publicKey,
 			}); err != nil {
 				log.Printf("failed to send metric data: %s", err)
 			} else {
@@ -78,7 +111,7 @@ func startReadMetrics(ctx context.Context, wg *sync.WaitGroup, config Config) ch
 		defer close(jobsCh)
 
 		var (
-			ticker       = time.NewTicker(time.Duration(config.pollInterval) * time.Second)
+			ticker       = time.NewTicker(time.Duration(config.PollInterval) * time.Second)
 			statsService = stats.New(cpuProvider, diskProvider)
 		)
 		defer ticker.Stop()
@@ -117,23 +150,37 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+
 	var (
 		config = NewConfig()
 		wg     sync.WaitGroup
 		jobsCh = startReadMetrics(ctx, &wg, config)
 	)
 
-	log.Printf(
-		"Starting read stats data every %v and send it every %v to %s",
-		time.Duration(config.pollInterval)*time.Second,
-		time.Duration(config.reportInterval)*time.Second,
-		config.endpoint,
-	)
+	pubicKey, err := utils.LoadPublicKey(config.CryptoKey)
 
-	for i := 0; i < int(config.rateLimit); i++ {
-		wg.Add(1)
-		go jobWorker(ctx, &wg, jobsCh, config)
+	if err != nil {
+		log.Fatalf("Crypto key wasn't loaded due to %s", err)
 	}
 
+	log.Printf(
+		"Starting read stats data every %v and send it every %v to %s",
+		time.Duration(config.PollInterval)*time.Second,
+		time.Duration(config.ReportInterval)*time.Second,
+		config.Endpoint,
+	)
+
+	for i := 0; i < int(config.RateLimit); i++ {
+		wg.Add(1)
+		go jobWorker(ctx, &wg, jobsCh, config, pubicKey)
+	}
+
+	<-stop
+	log.Println("Shutting down the agent...")
+
+	cancel()
 	wg.Wait()
+	log.Println("Agent stopped gracefully.")
 }
