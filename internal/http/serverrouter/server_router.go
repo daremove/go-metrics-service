@@ -32,9 +32,10 @@ import (
 
 // RouterConfig содержит конфигурацию для маршрутизатора сервера.
 type RouterConfig struct {
-	Endpoint   string          // URL-адрес конечной точки сервера
-	SigningKey string          // Ключ для подписи данных
-	PrivateKey *rsa.PrivateKey // Приватный ключ для дешифрования данных
+	Endpoint      string          // URL-адрес конечной точки сервера
+	SigningKey    string          // Ключ для подписи данных
+	PrivateKey    *rsa.PrivateKey // Приватный ключ для дешифрования данных
+	TrustedSubnet string          // Доверенная подсеть
 }
 
 // ServerRouter предоставляет маршрутизацию запросов к сервисам метрик и проверки состояния.
@@ -99,7 +100,12 @@ func (router *ServerRouter) Get(ctx context.Context) chi.Router {
 		})
 
 		r.Route("/updates", func(r chi.Router) {
-			r.Post("/", utils.DecryptMiddleware(router.config.PrivateKey)(updateMetricsHandler(ctx, router.metricsService)))
+			r.Post("/",
+				utils.VerifyIPMiddleware(router.config.TrustedSubnet)(
+					utils.DecryptMiddleware(router.config.PrivateKey)(
+						updateMetricsHandler(ctx, router.metricsService),
+					),
+				))
 		})
 
 		r.Route("/value", func(r chi.Router) {
@@ -313,6 +319,7 @@ type SendMetricModelDataConfig struct {
 	URL        string         // URL-адрес сервера
 	SigningKey string         // Ключ для подписи данных
 	PublicKey  *rsa.PublicKey // Публичный ключ для шифрования данных
+	LocalIP    string
 }
 
 // SendMetricModelData отправляет модель данных метрик на указанный сервер с возможной подписью данных.
@@ -367,6 +374,7 @@ func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("X-Real-IP", config.LocalIP)
 
 	if signedBody != nil {
 		req.Header.Set(dataintergity.HeaderKeyHash, hex.EncodeToString(signedBody))
@@ -374,8 +382,24 @@ func SendMetricModelData(data []models.Metrics, config SendMetricModelDataConfig
 
 	res, err := client.Do(req)
 
+	defer func() {
+		if closingBodyErr := res.Body.Close(); err != nil {
+			logger.Log.Error("error closing response body:", zap.Error(closingBodyErr))
+		}
+	}()
+
 	if err != nil {
 		return fmt.Errorf("failed to send data by using POST method: %w", err)
+	}
+
+	if res.StatusCode != 200 {
+		respBody, readErr := io.ReadAll(res.Body)
+
+		if err != nil {
+			return fmt.Errorf("failed to read response body: %w", readErr)
+		}
+
+		return fmt.Errorf("status code isn't success: %s", respBody)
 	}
 
 	err = res.Body.Close()

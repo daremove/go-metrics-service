@@ -17,6 +17,7 @@ type Config struct {
 	LogLevel        string
 	SigningKey      string
 	CryptoKey       string `json:"crypto_key"`
+	TrustedSubnet   string `json:"trusted_subnet"`
 }
 
 func loadConfigFromFile(path string) (Config, error) {
@@ -48,6 +49,7 @@ func NewConfig() Config {
 		signingKey      string
 		cryptoKey       string
 		configFile      string
+		trustedSubnet   string
 	)
 
 	flag.StringVar(&endpoint, "a", "", "address and port to run server")
@@ -58,6 +60,7 @@ func NewConfig() Config {
 	flag.StringVar(&signingKey, "k", "", "data signing key")
 	flag.StringVar(&cryptoKey, "crypto-key", "", "path to the encryption key")
 	flag.StringVar(&configFile, "c", "cmd/server/default_config.json", "path to the configuration file")
+	flag.StringVar(&trustedSubnet, "t", "", "CIDR of agent")
 	flag.Parse()
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -110,6 +113,10 @@ func NewConfig() Config {
 		configFile = configFileEnv
 	}
 
+	if trustedSubnetEnv := os.Getenv("TRUSTED_SUBNET"); trustedSubnetEnv != "" {
+		trustedSubnet = trustedSubnetEnv
+	}
+
 	if configFile != "" {
 		fileConfig, err := loadConfigFromFile(configFile)
 
@@ -140,6 +147,10 @@ func NewConfig() Config {
 		if cryptoKey == "" {
 			cryptoKey = fileConfig.CryptoKey
 		}
+
+		if trustedSubnet == "" {
+			trustedSubnet = fileConfig.TrustedSubnet
+		}
 	}
 
 	return Config{
@@ -151,5 +162,6 @@ func NewConfig() Config {
 		logLevel,
 		signingKey,
 		cryptoKey,
+		trustedSubnet,
 	}
 }

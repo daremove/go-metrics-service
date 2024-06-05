@@ -64,9 +64,10 @@ func initializeStorage(ctx context.Context, config Config) (metrics.Storage, *he
 func runServer(ctx context.Context, config Config, storage metrics.Storage, healthCheckService *healthcheck.HealthCheck, privateKey *rsa.PrivateKey) *http.Server {
 	metricsService := metrics.New(storage)
 	router := serverrouter.New(metricsService, healthCheckService, serverrouter.RouterConfig{
-		Endpoint:   config.Endpoint,
-		SigningKey: config.SigningKey,
-		PrivateKey: privateKey,
+		Endpoint:      config.Endpoint,
+		SigningKey:    config.SigningKey,
+		PrivateKey:    privateKey,
+		TrustedSubnet: config.TrustedSubnet,
 	})
 
 	server := &http.Server{
