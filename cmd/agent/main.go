@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
+
+	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"

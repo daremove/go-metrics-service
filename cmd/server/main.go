@@ -4,10 +4,14 @@ import (
 	"context"
 	"crypto/rsa"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/daremove/go-metrics-service/internal/proto"
+	"google.golang.org/grpc"
 
 	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
@@ -18,6 +22,8 @@ import (
 	"github.com/daremove/go-metrics-service/internal/storage/database"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
 	"github.com/daremove/go-metrics-service/internal/utils"
+
+	pb "github.com/daremove/go-metrics-service/internal/proto/metrics"
 )
 
 func initializeLogger(logLevel string) error {
@@ -61,8 +67,8 @@ func initializeStorage(ctx context.Context, config Config) (metrics.Storage, *he
 	return storage, healthCheckService, nil
 }
 
-func runServer(ctx context.Context, config Config, storage metrics.Storage, healthCheckService *healthcheck.HealthCheck, privateKey *rsa.PrivateKey) *http.Server {
-	metricsService := metrics.New(storage)
+func runServer(ctx context.Context, config Config, metricsService *metrics.Metrics, healthCheckService *healthcheck.HealthCheck, privateKey *rsa.PrivateKey) *http.Server {
+
 	router := serverrouter.New(metricsService, healthCheckService, serverrouter.RouterConfig{
 		Endpoint:      config.Endpoint,
 		SigningKey:    config.SigningKey,
@@ -80,6 +86,30 @@ func runServer(ctx context.Context, config Config, storage metrics.Storage, heal
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Could not listen on %s: %v\n", config.Endpoint, err)
+		}
+	}()
+
+	return server
+}
+
+func runGRPCServer(metricsService *metrics.Metrics) *grpc.Server {
+	address := ":3200"
+	server := grpc.NewServer()
+	metricsServer := proto.NewMetricsServer(metricsService)
+
+	go func() {
+		listen, err := net.Listen("tcp", address)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		pb.RegisterMetricsServiceServer(server, metricsServer)
+
+		log.Printf("Running gRPC server on %s\n", address)
+
+		if err := server.Serve(listen); err != nil {
+			log.Fatalf("Could not listen gRPC on %s: %v\n", address, err)
 		}
 	}()
 
@@ -106,7 +136,9 @@ func main() {
 		log.Fatalf("Storage wasn't initialized due to %s", err)
 	}
 
-	server := runServer(ctx, config, storage, healthCheckService, privateKey)
+	metricsService := metrics.New(storage)
+	server := runServer(ctx, config, metricsService, healthCheckService, privateKey)
+	grpcServer := runGRPCServer(metricsService)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
@@ -114,6 +146,8 @@ func main() {
 	<-stop
 
 	log.Println("Shutting down the server...")
+
+	grpcServer.GracefulStop()
 
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)

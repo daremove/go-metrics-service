@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/daremove/go-metrics-service/internal/services/metrics"
+
 	"github.com/daremove/go-metrics-service/internal/logger"
 	"github.com/daremove/go-metrics-service/internal/services/healthcheck"
 	"github.com/daremove/go-metrics-service/internal/storage/memstorage"
@@ -64,10 +66,11 @@ func TestRunServer(t *testing.T) {
 		}
 
 		storage := memstorage.New()
+		metricsService := metrics.New(storage)
 		healthCheckService := healthcheck.New(nil)
 
 		go func() {
-			runServer(ctx, config, storage, healthCheckService, nil)
+			runServer(ctx, config, metricsService, healthCheckService, nil)
 		}()
 
 		cancel()
