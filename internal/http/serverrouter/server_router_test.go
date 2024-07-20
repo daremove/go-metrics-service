@@ -136,6 +136,12 @@ func TestSendMetricModelData(t *testing.T) {
 				assert.Equal(t, "182b6cf5ae68b188e505436870025da0fd1553f916d5f978cf4204e4836eb8c9", r.Header.Get(dataintergity.HeaderKeyHash))
 			}),
 		},
+		{
+			testName: "Should add X-Real-IP as header",
+			testServer: createServer(func(_ http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "192.168.1.10", r.Header.Get("X-Real-IP"))
+			}),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -153,6 +159,7 @@ func TestSendMetricModelData(t *testing.T) {
 				URL:        tc.testServer.URL,
 				SigningKey: tc.signingKey,
 				PublicKey:  publicKey,
+				LocalIP:    "192.168.1.10",
 			})
 
 			assert.NoError(t, err)
@@ -327,7 +334,7 @@ func TestServerRouterJson(t *testing.T) {
 			modelData: map[string]models.Metrics{
 				"gauge_test": {ID: "test", MType: models.GaugeMetricType, Value: &valueMock},
 			},
-		}, healthCheckServiceMock{}, RouterConfig{PrivateKey: privateKey}).Get(context.TODO()),
+		}, healthCheckServiceMock{}, RouterConfig{PrivateKey: privateKey, TrustedSubnet: "192.168.1.0/24"}).Get(context.TODO()),
 	)
 	defer testServer.Close()
 
@@ -366,6 +373,7 @@ func TestServerRouterJson(t *testing.T) {
 			expectedMessage: "[{\"id\":\"counter_test\",\"type\":\"counter\",\"delta\":1},{\"id\":\"gauge_test\",\"type\":\"gauge\",\"value\":2.5}]",
 			headers: map[string]string{
 				"Content-Type": "application/json",
+				"X-Real-IP":    "192.168.1.10",
 			},
 			body: bytes.NewBuffer(modelDataMock),
 		},

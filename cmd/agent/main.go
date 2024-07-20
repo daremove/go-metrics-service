@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/http/serverrouter"
+
+	_ "github.com/daremove/go-metrics-service/cmd/buildversion"
 	"github.com/daremove/go-metrics-service/internal/models"
 	"github.com/daremove/go-metrics-service/internal/services/metrics"
 	"github.com/daremove/go-metrics-service/internal/services/stats"
@@ -24,7 +25,7 @@ type Job struct {
 	metricValue float64
 }
 
-func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config, publicKey *rsa.PublicKey) {
+func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config Config, publicKey *rsa.PublicKey, localIP string) {
 	defer wg.Done()
 
 	var (
@@ -60,6 +61,7 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 					URL:        fmt.Sprintf("http://%s", config.Endpoint),
 					SigningKey: config.SigningKey,
 					PublicKey:  publicKey,
+					LocalIP:    localIP,
 				}); err != nil {
 					log.Printf("failed to send metric data: %s", err)
 				}
@@ -87,6 +89,7 @@ func jobWorker(ctx context.Context, wg *sync.WaitGroup, jobs <-chan Job, config 
 				URL:        fmt.Sprintf("http://%s", config.Endpoint),
 				SigningKey: config.SigningKey,
 				PublicKey:  publicKey,
+				LocalIP:    localIP,
 			}); err != nil {
 				log.Printf("failed to send metric data: %s", err)
 			} else {
@@ -165,6 +168,12 @@ func main() {
 		log.Fatalf("Crypto key wasn't loaded due to %s", err)
 	}
 
+	localIP, err := utils.GetLocalIP()
+
+	if err != nil {
+		log.Fatalf("Local IP wasn't defined due to %s", err)
+	}
+
 	log.Printf(
 		"Starting read stats data every %v and send it every %v to %s",
 		time.Duration(config.PollInterval)*time.Second,
@@ -174,7 +183,7 @@ func main() {
 
 	for i := 0; i < int(config.RateLimit); i++ {
 		wg.Add(1)
-		go jobWorker(ctx, &wg, jobsCh, config, pubicKey)
+		go jobWorker(ctx, &wg, jobsCh, config, pubicKey, localIP)
 	}
 
 	<-stop
